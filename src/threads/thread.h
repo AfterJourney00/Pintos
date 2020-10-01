@@ -89,9 +89,12 @@ struct thread
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
-
+    
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+
+    int64_t block_start;                /* The start time of thread blocked*/
+    int64_t block_time;                 /* The time thread need to be blocked*/
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

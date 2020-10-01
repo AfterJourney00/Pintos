@@ -84,27 +84,39 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+/*Awaken any blocked thread that has been suspended enough time*/
+void
+awaken (struct thread *t, int64_t then){
+  printf("Running");
+  if(then - t -> block_start >= t -> block_time)
+    thread_unblock(t);
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
 timer_sleep (int64_t ticks) 
 {
+  printf("Running");                  /*No output??!*/
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
   /****Original implementation****/
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  /*while (timer_elapsed (start) < ticks)*/ 
+    /*thread_yield ();*/
 
   /****Implementation from zhaochf****/
-  /*struct thread *t = thread_current();*/  /*Get current running thread*/
-  /*enum intr_level old_level;*/            /*Get the interrupt level*/
-  
-  /*old_level = intr_disable ();*/          /*Disable interrupts*/
-  /*thread_block();*/                       /*Block current running thread*/
-  /*intr_set_level (old_level);*/           /*Restore the old interrupt level*/
-  /*while(timer_elapsed (start) < ticks)*/  /*Judge time enough or not*/
-    /*continue;*/
+  struct thread *t = thread_current();  /*Get current running thread*/
+  enum intr_level old_level;            /*Get the interrupt level*/  
+
+  old_level = intr_disable ();          /*Disable interrupts*/
+
+  thread_block();                       /*Block current running thread*/
+  t -> block_start = start;             /*Set the thread's block_start time*/
+  t -> block_time = ticks;              /*Set how long this thread should be blocked*/ 
+
+  thread_foreach(awaken, &start);
+  intr_set_level (old_level);           /*Restore the old interrupt level*/
   /*thread_unblock(t);*/                    /*Unblock the suspended thread*/
 }
 
