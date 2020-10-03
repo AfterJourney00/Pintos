@@ -84,40 +84,27 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
-/*Awaken any blocked thread that has been suspended enough time*/
-void
-awaken (struct thread *t, int64_t then){
-  printf("Running");
-  if(then - t -> block_start >= t -> block_time)
-    thread_unblock(t);
-}
-
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
 timer_sleep (int64_t ticks) 
 {
-  printf("Running");                  /*No output??!*/
   int64_t start = timer_ticks ();
 
   ASSERT (intr_get_level () == INTR_ON);
-  /****Original implementation****/
-  /*while (timer_elapsed (start) < ticks)*/ 
-    /*thread_yield ();*/
+  
+  struct thread *t = thread_current ();   /* Get current running thread */
+  enum intr_level old_level;        
+  old_level = intr_disable();             /* Disable the interrupt */
+  t -> block_start = start;               /* Set thread's block start time */
+  t -> block_time = ticks;                /* Set thread's time need to block */
+  thread_block();                         /* Block the thread */
+  intr_set_level (old_level);             /* Enable interrupt*/
 
-  /****Implementation from zhaochf****/
-  struct thread *t = thread_current();  /*Get current running thread*/
-  enum intr_level old_level;            /*Get the interrupt level*/  
 
-  old_level = intr_disable ();          /*Disable interrupts*/
-
-  thread_block();                       /*Block current running thread*/
-  t -> block_start = start;             /*Set the thread's block_start time*/
-  t -> block_time = ticks;              /*Set how long this thread should be blocked*/ 
-
-  thread_foreach(awaken, &start);
-  intr_set_level (old_level);           /*Restore the old interrupt level*/
-  /*thread_unblock(t);*/                    /*Unblock the suspended thread*/
+  /***Original implementation*/
+  /*while (timer_elapsed (start) < ticks) 
+    thread_yield ();*/
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -189,12 +176,28 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
+
+/* Function defined by us */
+/* To check each thread, can be unblocked or not */
+void
+unblock_or_not(struct thread *t, int64_t* now)
+{
+  if(*now - t->block_start >= t->block_time){
+    thread_unblock(t);
+    t-> block_start = 0;        /* Reset thread t's block starting time */
+    t-> block_time = INT64_MAX; /* Reset thread t's needed block time */
+  }
+  return;
+}
+
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+
+  /* This thread_foreach must be put behind ticks++, THINK IT! */
+  thread_foreach(unblock_or_not, &ticks);
   thread_tick ();
 }
 
