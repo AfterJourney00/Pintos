@@ -484,6 +484,21 @@ alloc_frame (struct thread *t, size_t size)
   return t->stack;
 }
 
+/* Function defined by us */
+/* The function needed by list_max to compare priority */
+int
+less_func(struct list_elem *e1, struct list_elem *e2, void* aux UNUSED)
+{
+  struct thread *t1 = list_entry (e1, struct thread, elem); /* Convert list_elem to thread*/
+  struct thread *t2 = list_entry (e2, struct thread, elem); /* Convert list_elem to thread*/
+  if(t1->priority < t2->priority){
+    return 1;
+  }
+  else{
+    return 0;
+  }
+}
+
 /* Chooses and returns the next thread to be scheduled.  Should
    return a thread from the run queue, unless the run queue is
    empty.  (If the running thread can continue running, then it
@@ -492,10 +507,16 @@ alloc_frame (struct thread *t, size_t size)
 static struct thread *
 next_thread_to_run (void) 
 {
-  if (list_empty (&ready_list))
+  if (list_empty (&ready_list)){
     return idle_thread;
-  else
-    return list_entry (list_pop_front (&ready_list), struct thread, elem);
+  }
+  else{
+    /* Get the max list_elem of ready-list */
+    struct list_elem *max_elem = list_max(&ready_list, less_func, NULL);
+    struct thread *t = list_entry (max_elem, struct thread, elem); /* restore it to thread */
+    list_remove(max_elem);  /* Remove this thread from list */
+    return t;
+  }
 }
 
 /* Completes a thread switch by activating the new thread's page
