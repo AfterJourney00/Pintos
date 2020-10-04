@@ -100,11 +100,6 @@ timer_sleep (int64_t ticks)
   t -> block_time = ticks;                /* Set thread's time need to block */
   thread_block();                         /* Block the thread */
   intr_set_level (old_level);             /* Enable interrupt*/
-
-
-  /***Original implementation*/
-  /*while (timer_elapsed (start) < ticks) 
-    thread_yield ();*/
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
