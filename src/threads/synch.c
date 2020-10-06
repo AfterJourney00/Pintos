@@ -205,30 +205,36 @@ lock_acquire (struct lock *lock)
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
 
-  if(lock->holder == NULL){                           /* If the lock has no holder */
-    sema_down (&lock->semaphore);
-    lock->holder = thread_current ();                 /* Let current thread hold this lock */
-    list_push_back(&(thread_current()->lock_list), &(lock->elem));
-  }
-  else{                                               /* If the lock has no holder */
-    int curr_priority = thread_current() -> priority; /* Get priority of current thread */
-    struct lock *lock_iter;                           /* Initialize a lock iterator */
+  if(!thread_mlfqs){
+    if(lock->holder == NULL){                           /* If the lock has no holder */
+      sema_down (&lock->semaphore);
+      lock->holder = thread_current ();                 /* Let current thread hold this lock */
+      list_push_back(&(thread_current()->lock_list), &(lock->elem));
+    }
+    else{                                               /* If the lock has no holder */
+      int curr_priority = thread_current() -> priority; /* Get priority of current thread */
+      struct lock *lock_iter;                           /* Initialize a lock iterator */
 
-    if(lock->holder->priority < curr_priority){       /* If thread's priority higher */
+      if(lock->holder->priority < curr_priority){       /* If thread's priority higher */
         lock->holder->priority = curr_priority;       /* donate to lock's holder */
-    }
+      }
 
-    struct thread *curr = lock->holder;
-    for(lock_iter = lock->holder->lock_waiting;       /* Traverse waiting locks */
+      struct thread *curr = lock->holder;
+      for(lock_iter = lock->holder->lock_waiting;       /* Traverse waiting locks */
                     lock_iter != NULL; lock_iter = lock_iter->holder->lock_waiting){
-      if(curr->priority > lock_iter->holder->priority){
-        lock_iter->holder->priority = curr->priority;
-      } 
-      curr = lock_iter->holder;
+        if(curr->priority > lock_iter->holder->priority){
+          lock_iter->holder->priority = curr->priority;
+        } 
+        curr = lock_iter->holder;
+      }
+      thread_current ()->lock_waiting = lock;           /* This lock is what the tread wait */
+      sema_down (&lock->semaphore);                     /* Try to block itself */
+      lock->holder = thread_current();                  /* When awaken, occupy the lock */
     }
-    thread_current ()->lock_waiting = lock;           /* This lock is what the tread wait */
-    sema_down (&lock->semaphore);                     /* Try to block itself */
-    lock->holder = thread_current();                  /* When awaken, occupy the lock */
+  }
+  else{
+    sema_down (&lock->semaphore);
+    lock->holder = thread_current ();
   }
 }
 
@@ -263,29 +269,30 @@ lock_release (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
 
-  list_remove(&(lock->elem));                      /* Remove this lock from the thread */
-  if(list_empty(&(thread_current()->lock_list))){  /* No lock any more */
-    thread_current()->priority = thread_current()->ori_priority;  /* Priority change to ori */
-  }
-  else{
-    int max_remain = -1;
-    /* Traverse all locks the thread has, fetch the one whose waiter head has max priority */
-    for(struct list_elem* iter = list_begin(&(thread_current()->lock_list));
-                          iter != list_end(&(thread_current()->lock_list));
-                          iter = list_next(iter)){
-      struct lock* lock_iter = list_entry(iter, struct lock, elem);
-      struct list_elem *q_head = list_begin(&(lock_iter->semaphore.waiters));
-      struct thread *head_t = list_entry(q_head, struct thread, elem);
-      max_remain = (max_remain < head_t->priority) ? head_t->priority : max_remain;                      
-    }
-    if(max_remain == -1){ /* If all those remaining locks has no waiter threads */
-      thread_current()->priority = thread_current()->ori_priority;
+  if(!thread_mlfqs){
+    list_remove(&(lock->elem));                      /* Remove this lock from the thread */
+    if(list_empty(&(thread_current()->lock_list))){  /* No lock any more */
+      thread_current()->priority = thread_current()->ori_priority;  /* Priority change to ori */
     }
     else{
-      thread_current()->priority = max_remain;
+      int max_remain = -1;
+      /* Traverse all locks the thread has, fetch the one whose waiter head has max priority */
+      for(struct list_elem* iter = list_begin(&(thread_current()->lock_list));
+                            iter != list_end(&(thread_current()->lock_list));
+                            iter = list_next(iter)){
+        struct lock* lock_iter = list_entry(iter, struct lock, elem);
+        struct list_elem *q_head = list_begin(&(lock_iter->semaphore.waiters));
+        struct thread *head_t = list_entry(q_head, struct thread, elem);
+        max_remain = (max_remain < head_t->priority) ? head_t->priority : max_remain;                      
+      }
+      if(max_remain == -1){ /* If all those remaining locks has no waiter threads */
+        thread_current()->priority = thread_current()->ori_priority;
+      }
+      else{
+        thread_current()->priority = max_remain;
+      }
     }
   }
-
   lock->holder = NULL;
   sema_up (&lock->semaphore);
 }

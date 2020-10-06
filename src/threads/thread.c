@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "threads/fixed_point.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -36,6 +37,9 @@ static struct thread *initial_thread;
 
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
+
+/* System load average, initialize it to 0 */
+static int64_t load_avg = 0;
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
@@ -197,6 +201,10 @@ thread_create (const char *name, int priority,
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
+
+  /* Inherite niceness and recent_cpu from parent thread */
+  t->niceness = thread_current()->niceness;
+  t->recent_cpu = thread_current()->recent_cpu;
 
   /* Add to run queue. */
   thread_unblock (t);
@@ -362,33 +370,94 @@ thread_get_priority (void)
 void
 thread_set_nice (int nice UNUSED) 
 {
-  /* Not yet implemented. */
+  thread_current()->niceness = nice;
+  update_priority(thread_current(), NULL);
+  thread_yield();
 }
 
 /* Returns the current thread's nice value. */
 int
 thread_get_nice (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return thread_current()->niceness;
 }
 
 /* Returns 100 times the system load average. */
 int
 thread_get_load_avg (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return FP2IN(MULFI(load_avg,100));
 }
 
 /* Returns 100 times the current thread's recent_cpu value. */
 int
 thread_get_recent_cpu (void) 
 {
-  /* Not yet implemented. */
-  return 0;
+  return FP2IN(MULFI(thread_current()->recent_cpu,100));
+}
+
+/* Function that update recent_cpu */
+void
+update_recent_cpu_all(struct thread *t, void* aux UNUSED)
+{
+  if(t != idle_thread){
+    t->recent_cpu = MULFF(DIVFF(MULFI(load_avg,2),ADDFI(MULFI(load_avg,2),1)),t->recent_cpu);
+    t->recent_cpu = ADDFI(t->recent_cpu,t->niceness);
+  }
 }
 
+/* Function that update load_avg */
+void
+update_load_avg(void)
+{
+  int count = (int)list_size(&ready_list);
+  if(thread_current() != idle_thread){
+    count += 1;
+  }
+  load_avg = ADDFF(DIVFI(MULFI(load_avg,59),60),DIVFI(I2FP(count),60));
+}
+
+/* Function that update priority */
+void
+update_priority(struct thread *t, void* aux UNUSED){
+  if(t != idle_thread){
+    t->priority = FP2IN(SUBFF(I2FP(PRI_MAX),ADDFI(DIVFI(t->recent_cpu,4),2*t->niceness)));
+    if(t->priority < PRI_MIN){
+      t->priority = PRI_MIN;
+    }
+    if(t->priority > PRI_MAX){
+      t->priority = PRI_MAX;
+    }
+  }
+}
+
+void
+increament_current_thread_recent_cpu(void)
+{
+  if(thread_current() != idle_thread){
+    thread_current()->recent_cpu = ADDFI(thread_current()->recent_cpu,1);
+  }
+}
+
+void
+update_rc_and_priority(struct thread *t, void* aux)
+{
+  if(t != idle_thread){
+    if(*(int64_t*)aux % 100 == 0){
+      t->recent_cpu = MULFF(DIVFF(MULFI(load_avg,2),ADDFI(MULFI(load_avg,2),1)),t->recent_cpu);
+      t->recent_cpu = ADDFI(t->recent_cpu,t->niceness);
+    }
+    
+    t->priority = FP2IN(SUBFF(I2FP(PRI_MAX),ADDFI(DIVFI(t->recent_cpu,4),2*t->niceness)));
+    if(t->priority < PRI_MIN){
+      t->priority = PRI_MIN;
+    }
+    if(t->priority > PRI_MAX){
+      t->priority = PRI_MAX;
+    }
+  }
+}
+
 /* Idle thread.  Executes when no other thread is ready to run.
 
    The idle thread is initially put on the ready list by
@@ -474,12 +543,19 @@ init_thread (struct thread *t, const char *name, int priority)
   t->status = THREAD_BLOCKED;
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
+
   t->priority = priority;
   t->ori_priority = priority;
+
   t->block_start = 0;
   t->block_time = INT64_MAX;
+
   t->lock_waiting = NULL;
   list_init(&(t->lock_list));
+
+  t->niceness = 0;
+  t->recent_cpu = 0;
+
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

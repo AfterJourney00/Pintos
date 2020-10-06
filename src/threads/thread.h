@@ -100,6 +100,9 @@ struct thread
     int64_t block_start;                /* Record the time start to block */
     int64_t block_time;                 /* Record the time need to block */
 
+    int64_t niceness;                       /* Nice value of the thread: [-20, 20]*/
+    int64_t recent_cpu;                     /* Recent CPU of the thread */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
@@ -147,5 +150,12 @@ int thread_get_load_avg (void);
 
 /* Comparison function defined by us */
 int less_func(struct list_elem *e1, struct list_elem *e2, void* aux UNUSED);
+
+/* Some updating functions required in mlfqs */
+void update_recent_cpu_all(struct thread *t, void* aux UNUSED);
+void update_load_avg(void);
+void update_priority(struct thread *t, void* aux UNUSED);
+void increament_current_thread_recent_cpu(void);
+void update_rc_and_priority(struct thread *t, void* aux);
 
 #endif /* threads/thread.h */

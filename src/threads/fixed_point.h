@@ -3,7 +3,7 @@
 
 #define P 17
 #define Q 14
-#define F (1 << Q)
+#define F 1 << Q
 
 /*Convert integer to fixed-point number*/
 #define I2FP(n) ((n) * (F))
@@ -11,8 +11,8 @@
 /*Convert fixed-point number to integer(rounding toward zero)*/
 #define FP2IZ(x) ((x) / (F))
 
-/*Convert fixed-point number to integer(rounding toward nearest)*/
-#define FP2IN(x,f) (x >= 0) ? (((x) + ((F) / (2))) / (F)) : (((x) - ((F) / (2))) / (F))
+/*fixed-point number to integer(rounding toward nearest)*/
+#define FP2IN(x) (x >= 0) ? (((x) + ((F) / (2))) / (F)) : (((x) - ((F) / (2))) / (F))
 
 /*Addition(fp + fp)*/
 #define ADDFF(x,y) ((x) + (y))
