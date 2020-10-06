@@ -203,10 +203,7 @@ thread_create (const char *name, int priority,
 
   /* Modified from tc:priority-preempt */
   /* If the thread created has higher priority, yield current running thread */
-  if(priority > thread_current()->priority){
-    thread_yield();
-  }
-
+  thread_yield();
   return tid;
 }
 
@@ -341,8 +338,15 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
-  
-  thread_current()->priority = new_priority;
+  thread_current()->ori_priority = new_priority;  /* Update thread's original priority */
+  if(list_empty(&(thread_current()->lock_list))){ /* If the thread has no lock */ 
+      thread_current()->priority = new_priority;  /* Update priority to new priority */
+  }
+  else{                                           /* If thread has other locks */
+    if(new_priority > thread_current()->priority){
+      thread_current()->priority = new_priority;
+    }
+  }
   /* Modified from tc:priority-fifo */
   thread_yield();
 }
@@ -471,8 +475,11 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->ori_priority = priority;
   t->block_start = 0;
   t->block_time = INT64_MAX;
+  t->lock_waiting = NULL;
+  list_init(&(t->lock_list));
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

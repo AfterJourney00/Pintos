@@ -88,10 +88,14 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
+    int ori_priority;                   /* Original Priority. */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
+
+    struct list lock_list;             /* Lockes hold by the thread */
+    struct lock* lock_waiting;          /* The lock the thread is waiting */
 
     int64_t block_start;                /* Record the time start to block */
     int64_t block_time;                 /* Record the time need to block */
@@ -140,5 +144,8 @@ int thread_get_nice (void);
 void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
+
+/* Comparison function defined by us */
+int less_func(struct list_elem *e1, struct list_elem *e2, void* aux UNUSED);
 
 #endif /* threads/thread.h */
