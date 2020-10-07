@@ -84,6 +84,19 @@ timer_elapsed (int64_t then)
   return timer_ticks () - then;
 }
 
+/* Function defined by us */
+/* To check each thread, can be unblocked or not */
+void
+unblock_or_not(struct thread *t, int64_t* now UNUSED)
+{
+  if(*now - t->block_start >= t->block_time){
+    thread_unblock(t);
+    t-> block_start = 0;        /* Reset thread t's block starting time */
+    t-> block_time = INT64_MAX; /* Reset thread t's needed block time */
+  }
+  return;
+}
+
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
    be turned on. */
 void
@@ -95,11 +108,11 @@ timer_sleep (int64_t ticks)
   
   struct thread *t = thread_current ();   /* Get current running thread */
   enum intr_level old_level;        
-  old_level = intr_disable();             /* Disable the interrupt */
+  old_level = intr_disable();     /* Disable the interrupt */
   t -> block_start = start;       /* Set thread's block start time */
-  t -> block_time = ticks;                /* Set thread's time need to block */
-  thread_block();                         /* Block the thread */
-  intr_set_level (old_level);             /* Enable interrupt*/
+  t -> block_time = ticks;        /* Set thread's time need to block */
+  thread_block();                 /* Block the thread */
+  intr_set_level (old_level);     /* Enable interrupt*/
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -172,19 +185,6 @@ timer_print_stats (void)
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-/* Function defined by us */
-/* To check each thread, can be unblocked or not */
-void
-unblock_or_not(struct thread *t, int64_t* now)
-{
-  if(*now - t->block_start >= t->block_time){
-    thread_unblock(t);
-    t-> block_start = 0;        /* Reset thread t's block starting time */
-    t-> block_time = INT64_MAX; /* Reset thread t's needed block time */
-  }
-  return;
-}
-
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
@@ -196,8 +196,10 @@ timer_interrupt (struct intr_frame *args UNUSED)
       update_load_avg();
       thread_foreach(update_recent_cpu_all, NULL);
     }
-    if(ticks % 4 == 0){
-      thread_foreach(update_priority, NULL);
+    else{
+      if(ticks % 4 == 0){
+        update_priority(thread_current(), NULL);
+      }
     }
   }
   /* This thread_foreach must be put behind ticks++, THINK IT! */

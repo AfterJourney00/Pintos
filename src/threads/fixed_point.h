@@ -1,9 +1,9 @@
 #ifndef THREADS_FIXED_POINT_H
 #define THREADS_FIXED_POINT_H
 
-#define P 17
-#define Q 14
-#define F 1 << Q
+#define P 19
+#define Q 12
+#define F 1 << (Q)
 
 /*Convert integer to fixed-point number*/
 #define I2FP(n) ((n) * (F))

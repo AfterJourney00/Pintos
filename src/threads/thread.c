@@ -39,7 +39,7 @@ static struct thread *initial_thread;
 static struct lock tid_lock;
 
 /* System load average, initialize it to 0 */
-static int64_t load_avg = 0;
+static int64_t load_avg = I2FP(0);
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
@@ -113,7 +113,7 @@ thread_start (void)
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
-
+  load_avg = I2FP(0);
   /* Start preemptive thread scheduling. */
   intr_enable ();
 
@@ -202,7 +202,7 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
-  /* Inherite niceness and recent_cpu from parent thread */
+  /* Inherite niceness and recent_cpu from parent thread*/
   t->niceness = thread_current()->niceness;
   t->recent_cpu = thread_current()->recent_cpu;
 
@@ -226,7 +226,6 @@ thread_block (void)
 {
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
-
   thread_current ()->status = THREAD_BLOCKED;
   schedule ();
 }
@@ -403,6 +402,7 @@ update_recent_cpu_all(struct thread *t, void* aux UNUSED)
   if(t != idle_thread){
     t->recent_cpu = MULFF(DIVFF(MULFI(load_avg,2),ADDFI(MULFI(load_avg,2),1)),t->recent_cpu);
     t->recent_cpu = ADDFI(t->recent_cpu,t->niceness);
+    update_priority(t, NULL);
   }
 }
 
@@ -410,9 +410,9 @@ update_recent_cpu_all(struct thread *t, void* aux UNUSED)
 void
 update_load_avg(void)
 {
-  int count = (int)list_size(&ready_list);
+  size_t count = list_size(&ready_list);
   if(thread_current() != idle_thread){
-    count += 1;
+    count ++;
   }
   load_avg = ADDFF(DIVFI(MULFI(load_avg,59),60),DIVFI(I2FP(count),60));
 }
@@ -424,9 +424,11 @@ update_priority(struct thread *t, void* aux UNUSED){
     t->priority = FP2IN(SUBFF(I2FP(PRI_MAX),ADDFI(DIVFI(t->recent_cpu,4),2*t->niceness)));
     if(t->priority < PRI_MIN){
       t->priority = PRI_MIN;
+      return;
     }
     if(t->priority > PRI_MAX){
       t->priority = PRI_MAX;
+      return;
     }
   }
 }
@@ -436,25 +438,6 @@ increament_current_thread_recent_cpu(void)
 {
   if(thread_current() != idle_thread){
     thread_current()->recent_cpu = ADDFI(thread_current()->recent_cpu,1);
-  }
-}
-
-void
-update_rc_and_priority(struct thread *t, void* aux)
-{
-  if(t != idle_thread){
-    if(*(int64_t*)aux % 100 == 0){
-      t->recent_cpu = MULFF(DIVFF(MULFI(load_avg,2),ADDFI(MULFI(load_avg,2),1)),t->recent_cpu);
-      t->recent_cpu = ADDFI(t->recent_cpu,t->niceness);
-    }
-    
-    t->priority = FP2IN(SUBFF(I2FP(PRI_MAX),ADDFI(DIVFI(t->recent_cpu,4),2*t->niceness)));
-    if(t->priority < PRI_MIN){
-      t->priority = PRI_MIN;
-    }
-    if(t->priority > PRI_MAX){
-      t->priority = PRI_MAX;
-    }
   }
 }
 
@@ -554,7 +537,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&(t->lock_list));
 
   t->niceness = 0;
-  t->recent_cpu = 0;
+  t->recent_cpu = I2FP(0);
 
   t->magic = THREAD_MAGIC;
 

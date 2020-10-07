@@ -6,11 +6,15 @@ Group 31
 
 - Chengfeng Zhao zhaochf@shanghaitech.edu.cn
 
-## Task 1: Alarm Clock
+## Task 1: Alarm Clock  *(implemented by Chengfeng Zhao)*
 
 ### Data Structure
 
 #### A1: Copy here the declaration of each new or changed `struct` or `struct` member, global or static variable, `typedef`, or enumeration.  Identify the purpose of each in 25 words or less.
+
+
+
+
 
 
 
@@ -40,7 +44,7 @@ Group 31
 
 
 
-## Priority Scheduling
+## Priority Scheduling  *(implemented by Chengfeng Zhao)*
 
 ### Data Structure
 
@@ -78,7 +82,7 @@ Group 31
 
 
 
-## Advanced Scheduler
+## Advanced Scheduler  *(implemented by Chengfeng Zhao)*
 
 ### Data Structures
 
