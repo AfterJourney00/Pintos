@@ -2,15 +2,20 @@
 
 # Design Document
 
-Group 31
+*Group 31*
 
 - Yuqing Yao yaoyq@shanghaitech.edu.cn
 
+  - Typesetting of our design document
 - Chengfeng Zhao zhaochf@shanghaitech.edu.cn
+  - Coding implementations(Task1, Task2, Task3)
+  - Writing of our design document
+
+------
 
 
 
-## Task 1: Alarm Clock  *(implemented by Chengfeng Zhao)*
+## Task 1: Alarm Clock
 
 ### ----- Data Structure -----
 
@@ -64,9 +69,9 @@ Initially, `block_start` and `block_time` are set to `INT64_MAX` and `0`, respec
 
 ***Answer:***
 
-We did not take any step to try to minimize the amount of time spent in the timer interrupt handler in this part, but we do in the third part.
+We did not take step to try to minimize the amount of time spent in the timer interrupt handler in this part, but we do that **in the third part.**
 
-However, I think some steps like maintaining a new list which consists of all sleeping threads can reduce the time cost here. Since if we have a list consisting all sleeping threads, we can traverse this list only to check which thread can be unblocked. 
+However, I think if we maintain a new priority list to store all sleeping threads, and use their waiting time as the priority, we can reduce the time cost when finding which thread can be unblocked, and therefore the time spent in the timer interrupt handler will be minimized.
 
 
 
@@ -98,7 +103,7 @@ Since we don't want busy wait in `timer_sleep()`, we have to record the time a t
 
 
 
-## Priority Scheduling  *(implemented by Chengfeng Zhao)*
+## Priority Scheduling
 
 ### ----- Data Structure -----
 
@@ -155,9 +160,11 @@ Initially, `ori_priority` is set to the given priority, `lock_list` is initializ
 
    thread C acquires lock B, priority = 3  *(step4)*
 
-   thread A release lock A  *(step5)*
+   thread A releases lock A  *(step5)*
 
-   thread B release lock B  *(step6)*
+   thread B releases lock B  *(step6)*
+   
+   ***Note:*** In the diagram below, ***lock_list:lock A(-1)*** means: lock A now exists in the lock list and this lock list has `priority_representation` is `-1`.
 
 ```
 			thread A			|			  thread B  		    | 	 	         thread C
@@ -214,11 +221,11 @@ We ensure that through several changes:
 - In function `sema_up()`, which is the key function for waking up waiting threads, we always choose the thread which has the maximum priority in semaphore's waiters.
 - In function `cond_signal()`, we always choose to `sema_up` the semaphore whose waiters have the maximum priority among all waiters of this condition variable.
 
-Therefore, for lock and semaphore, `sema_up()` always unblock the waiter which has the maximum priority first and then `next_thread_to_run` choose the maximum one in ready list first to run. And for conditional variable, `cond_signal()` always `sema_up` the semaphore which has the waiter that  has the maximum priority. So we can ensure that the highest priority thread waiting for a lock, semaphore, or condition variable wakes up first.
+Therefore, for lock and semaphore, `sema_up()` always unblock the waiter which has the maximum priority first and then `next_thread_to_run` choose the maximum one in ready list first to run. And for conditional variable, `cond_signal()` always `sema_up` the semaphore which has the waiter that  has the maximum priority. So we can ensure that the thread that has  highest priority waiting for a lock, semaphore, or condition variable wakes up first.
 
 ***Note:***
 
-Obviously, some new comparing functions are implemented by us and add to the system, they are:
+Obviously, some new comparing functions are implemented by us and added to the system, they are:
 
 ```c
 /* Function used to compare two thread's priority (in thread.h) */
@@ -292,7 +299,7 @@ int sema_less_func(struct list_elem *e1, struct list_elem *e2, void *aux UNUSED)
 ***Answer:***
 
 1. `thread_set_priority()` and priority donation may have potential race. Since when a thread is being donated,  if donation is interrupted by `thread_set_priority()`, the priority donation may make no sense. This situation may also happen when a thread is releasing locks. Reversely, if a thread is to be set a new priority, priority donation may interrupt this process. Therefore, we disable interrupts at the beginning of `thread_set_priority()`, `lock_aquire()` and `lock_release()` to avoid this race.
-2. I don't think we can use lock to avoid this race. If we want to use lock, we need to call `lock_acquire()` in `thread_set_priority()` to block itself. However, since our thread data structure does not include a member to record which lock is on the priority donation nest or chain, so lock can not be used to avoid this race in our implementation.
+2. I don't think we can use lock to avoid this race. If we want to use lock, we need to call `lock_acquire()` in `thread_set_priority()` to try to block itself. However, since our thread data structure does not include a member to record which lock is on the priority donation nest or chain, so we don't now which lock should we acquire in `thread_set_priority()`. Therefore, lock can not be used to avoid this race in our implementation.
 
 
 
@@ -364,7 +371,7 @@ Other implementations are straightforward and concept-driven.
 
 
 
-## Advanced Scheduler  *(implemented by Chengfeng Zhao)*
+## Advanced Scheduler
 
 ### ----- Data Structures -----
 
@@ -453,11 +460,19 @@ So, in summary, from both theory and practice perspective, we found that if the 
 
 1. Brief comment:
 
-   Our design is direct and simple, also good space complexity and time complexity. The disadvantage of our design is that our time complexity is not so good. We implement a single queue rather than 64 queues, which reduce the space complexity. And for the single queue(ready_list), we do not sort it, which will cost ***O(n)*** time for selecting the thread next to run. This is better than sorted implementation, since every 4 ticks it will cost ***O(nlogn)*** to re-sort the ready list.
+   Our design is direct and simple, also good space complexity and time complexity. The disadvantage of our design is that our time complexity is not optimal. We implement a single queue rather than 64 queues, which reduce the space complexity. And for the single queue(ready_list), we do not sort it, which will cost ***O(n)*** time for selecting the thread next to run. This is better than sorted implementation, since every 4 ticks it will cost ***O(nlogn)*** to re-sort the ready list.
 
 2. Refinement and improvement:
 
    If I were to have extra time, I will implement 64 queues. Since it will only cost ***O(n)*** time per second to rearrange all the threads in the element, which has better time complexity.
+
+
+
+#### >>C6: The assignment explains arithmetic for fixed-point math in detail, but it leaves it open to you to implement it. Why did you decide to implement it the way you did?  If you created an abstraction layer for fixed-point math, that is, an abstract data type and/or a set of functions or macros to manipulate fixed-point numbers, why did you do so?  If not, why not?
+
+***Answer:***
+
+I choose to implement these arithmetics through macros because macros are very convenient for programmer to use, concise and simple. However, one important thing should be noticed when implementing macros: ***parentheses everywhere!***
 
 
 
