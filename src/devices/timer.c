@@ -87,12 +87,12 @@ timer_elapsed (int64_t then)
 /* Function defined by us */
 /* To check each thread, can be unblocked or not */
 void
-unblock_or_not(struct thread *t, int64_t* now UNUSED)
+unblock_or_not(struct thread *t, void *now UNUSED)
 {
-  if(*now - t->block_start >= t->block_time){
+  if(*(int64_t*)now - t->block_start >= t->block_time){
     thread_unblock(t);
-    t-> block_start = 0;        /* Reset thread t's block starting time */
-    t-> block_time = INT64_MAX; /* Reset thread t's needed block time */
+    t-> block_start = 0;        
+    t-> block_time = INT64_MAX; 
   }
   return;
 }
@@ -203,6 +203,7 @@ timer_interrupt (struct intr_frame *args UNUSED)
     }
   }
   /* This thread_foreach must be put behind ticks++, THINK IT! */
+  /*thread_foreach(unblock_or_not, &ticks);*/
   thread_foreach(unblock_or_not, &ticks);
   thread_tick ();
 }

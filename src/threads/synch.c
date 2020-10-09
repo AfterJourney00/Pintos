@@ -187,6 +187,7 @@ lock_init (struct lock *lock)
   ASSERT (lock != NULL);
 
   lock->holder = NULL;
+  lock->priority_representation = -1;
   sema_init (&lock->semaphore, 1);
 }
 
@@ -204,11 +205,10 @@ lock_acquire (struct lock *lock)
   ASSERT (lock != NULL);
   ASSERT (!intr_context ());
   ASSERT (!lock_held_by_current_thread (lock));
-
-  if(!thread_mlfqs){
+  enum intr_level old_level = intr_disable ();          /* Disable interrupts */
+  int depth = 0;
+  if(!thread_mlfqs){                                    /* No priority donation in mlfqs mode */
     if(lock->holder == NULL){                           /* If the lock has no holder */
-      sema_down (&lock->semaphore);
-      lock->holder = thread_current ();                 /* Let current thread hold this lock */
       list_push_back(&(thread_current()->lock_list), &(lock->elem));
     }
     else{                                               /* If the lock has no holder */
@@ -216,26 +216,30 @@ lock_acquire (struct lock *lock)
       struct lock *lock_iter;                           /* Initialize a lock iterator */
 
       if(lock->holder->priority < curr_priority){       /* If thread's priority higher */
-        lock->holder->priority = curr_priority;       /* donate to lock's holder */
+        lock->holder->priority = curr_priority;         /* donate to lock's holder */
+        lock->priority_representation = curr_priority;  /* Update the priority representation */
       }
 
       struct thread *curr = lock->holder;
       for(lock_iter = lock->holder->lock_waiting;       /* Traverse waiting locks */
-                    lock_iter != NULL; lock_iter = lock_iter->holder->lock_waiting){
+          lock_iter != NULL && depth <= 7; lock_iter = lock_iter->holder->lock_waiting){
         if(curr->priority > lock_iter->holder->priority){
-          lock_iter->holder->priority = curr->priority;
+          lock_iter->holder->priority = curr->priority; /* Donation the priority in a chain */
+          lock_iter->priority_representation = curr->priority;  /* Also update the representation */
         } 
         curr = lock_iter->holder;
+        depth ++;
       }
       thread_current ()->lock_waiting = lock;           /* This lock is what the tread wait */
-      sema_down (&lock->semaphore);                     /* Try to block itself */
-      lock->holder = thread_current();                  /* When awaken, occupy the lock */
     }
+    sema_down (&lock->semaphore);
+    lock->holder = thread_current ();
   }
   else{
     sema_down (&lock->semaphore);
     lock->holder = thread_current ();
   }
+  intr_set_level(old_level);                            /* Renable interrupts */
 }
 
 /* Tries to acquires LOCK and returns true if successful or false
@@ -268,7 +272,7 @@ lock_release (struct lock *lock)
 {
   ASSERT (lock != NULL);
   ASSERT (lock_held_by_current_thread (lock));
-
+  enum intr_level old_level = intr_disable ();          /* Disable interrupts */
   if(!thread_mlfqs){
     list_remove(&(lock->elem));                      /* Remove this lock from the thread */
     if(list_empty(&(thread_current()->lock_list))){  /* No lock any more */
@@ -281,9 +285,8 @@ lock_release (struct lock *lock)
                             iter != list_end(&(thread_current()->lock_list));
                             iter = list_next(iter)){
         struct lock* lock_iter = list_entry(iter, struct lock, elem);
-        struct list_elem *q_head = list_begin(&(lock_iter->semaphore.waiters));
-        struct thread *head_t = list_entry(q_head, struct thread, elem);
-        max_remain = (max_remain < head_t->priority) ? head_t->priority : max_remain;                      
+        int max_priority = lock_iter->priority_representation;
+        max_remain = (max_remain < max_priority) ? max_priority : max_remain;                 
       }
       if(max_remain == -1){ /* If all those remaining locks has no waiter threads */
         thread_current()->priority = thread_current()->ori_priority;
@@ -295,6 +298,10 @@ lock_release (struct lock *lock)
   }
   lock->holder = NULL;
   sema_up (&lock->semaphore);
+  if(list_empty(&(lock->semaphore.waiters))){   /* After release, if no more threads waiting */
+    lock->priority_representation = -1;         /* Restore priority representation to -1 */
+  }
+  intr_set_level(old_level);                            /* Renable interrupts */
 }
 
 /* Returns true if the current thread holds LOCK, false

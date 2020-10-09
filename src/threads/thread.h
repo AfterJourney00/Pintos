@@ -88,20 +88,20 @@ struct thread
     char name[16];                      /* Name (for debugging purposes). */
     uint8_t *stack;                     /* Saved stack pointer. */
     int priority;                       /* Priority. */
-    int ori_priority;                   /* Original Priority. */
+    int ori_priority;                   /* Original Priority (Part2) */
     struct list_elem allelem;           /* List element for all threads list. */
 
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-    struct list lock_list;             /* Lockes hold by the thread */
-    struct lock* lock_waiting;          /* The lock the thread is waiting */
+    struct list lock_list;             /* Lockes hold by the thread (Part2) */
+    struct lock* lock_waiting;          /* The lock the thread is waiting (Part2) */
 
-    int64_t block_start;                /* Record the time start to block */
-    int64_t block_time;                 /* Record the time need to block */
+    int64_t block_start;                /* Record the time the thread start to be blocked (Part1) */
+    int64_t block_time;                 /* Record the time the thread should be blocked (Part1) */
 
-    int niceness;                       /* Nice value of the thread: [-20, 20]*/
-    int64_t recent_cpu;                 /* Recent CPU of the thread */
+    int niceness;                       /* Nice value of the thread: [-20, 20] (Part3) */
+    int64_t recent_cpu;                 /* Recent CPU of the thread (Part3) */
 
 #ifdef USERPROG
     /* Owned by userprog/process.c. */

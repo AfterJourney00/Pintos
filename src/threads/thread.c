@@ -345,6 +345,7 @@ thread_foreach (thread_action_func *func, void *aux)
 void
 thread_set_priority (int new_priority) 
 {
+  enum intr_level old_level = intr_disable ();    /* Disable interrupts */
   thread_current()->ori_priority = new_priority;  /* Update thread's original priority */
   if(list_empty(&(thread_current()->lock_list))){ /* If the thread has no lock */ 
       thread_current()->priority = new_priority;  /* Update priority to new priority */
@@ -354,6 +355,7 @@ thread_set_priority (int new_priority)
       thread_current()->priority = new_priority;
     }
   }
+  intr_set_level(old_level);                      /* Renable interrupts */
   /* Modified from tc:priority-fifo */
   thread_yield();
 }
@@ -676,7 +678,7 @@ allocate_tid (void)
 
   return tid;
 }
-
+
 /* Offset of `stack' member within `struct thread'.
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
