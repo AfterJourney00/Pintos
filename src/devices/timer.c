@@ -91,6 +91,8 @@ unblock_or_not(struct thread *t, void *now UNUSED)
 {
   if(*(int64_t*)now - t->block_start >= t->block_time){
     thread_unblock(t);
+
+    /* Reset block_start and block_time */
     t-> block_start = 0;        
     t-> block_time = INT64_MAX; 
   }
@@ -98,7 +100,12 @@ unblock_or_not(struct thread *t, void *now UNUSED)
 }
 
 /* Sleeps for approximately TICKS timer ticks.  Interrupts must
-   be turned on. */
+   be turned on.
+
+   *************** our implementation ****************
+   Disable the interrupts first, then record blocking information
+   into struct thread, then block it and let it sleep. Finally
+   re-enable the interrupts*/
 void
 timer_sleep (int64_t ticks) 
 {
@@ -108,11 +115,11 @@ timer_sleep (int64_t ticks)
   
   struct thread *t = thread_current ();   /* Get current running thread */
   enum intr_level old_level;        
-  old_level = intr_disable();     /* Disable the interrupt */
-  t -> block_start = start;       /* Set thread's block start time */
-  t -> block_time = ticks;        /* Set thread's time need to block */
-  thread_block();                 /* Block the thread */
-  intr_set_level (old_level);     /* Enable interrupt*/
+  old_level = intr_disable();             /* Disable the interrupt */
+  t -> block_start = start;               /* Set thread's block start time */
+  t -> block_time = ticks;                /* Set thread's time need to block */
+  thread_block();                         /* Block the thread */
+  intr_set_level (old_level);             /* Enable interrupt */
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -185,26 +192,34 @@ timer_print_stats (void)
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
 
-/* Timer interrupt handler. */
+/* Timer interrupt handler.
+
+  ************* Our implementation *****************
+  >>check every thread, if blocked enough time, unblock it(task 1)
+  >>increase recent_cpu by 1 for current thread
+    every 100 ticks update load_avg, recent_cpu and priority globally
+    every 4 ticks update current thread's priority (task 3)
+*/
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+  /* judge the mlfqs mode */
   if(thread_mlfqs){
-    increament_current_thread_recent_cpu();
-    if(ticks % TIMER_FREQ == 0){
-      update_load_avg();
-      thread_foreach(update_recent_cpu_all, NULL);
+    increament_current_thread_recent_cpu();         /* increase current thread's recent_cpu by 1 */
+    if(ticks % TIMER_FREQ == 0){                    /* every 100 ticks */
+      update_load_avg();                            /* update load average */
+      thread_foreach(update_recent_cpu_all, NULL);  /* update recent_cpu and priority globally */
     }
     else{
-      if(ticks % 4 == 0){
-        update_priority(thread_current(), NULL);
+      if(ticks % 4 == 0){                           /* every 4 ticks */
+        update_priority(thread_current(), NULL);    /* update recent_cpu of current thread */
       }
     }
   }
-  /* This thread_foreach must be put behind ticks++, THINK IT! */
-  /*thread_foreach(unblock_or_not, &ticks);*/
-  thread_foreach(unblock_or_not, &ticks);
+
+  /* not in the mlfqs mode */
+  thread_foreach(unblock_or_not, &ticks);           /* check every thread to unblock */
   thread_tick ();
 }
 

@@ -94,7 +94,7 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 
-    struct list lock_list;             /* Lockes hold by the thread (Part2) */
+    struct list lock_list;              /* Locks hold by the thread (Part2) */
     struct lock* lock_waiting;          /* The lock the thread is waiting (Part2) */
 
     int64_t block_start;                /* Record the time the thread start to be blocked (Part1) */
@@ -148,10 +148,13 @@ void thread_set_nice (int);
 int thread_get_recent_cpu (void);
 int thread_get_load_avg (void);
 
-/* Comparison function defined by us */
+/* Comparison function defined by us
+   Compare two threads' priority 
+   return 1 if the first one is lower, otherwise 0
+*/
 int less_func(struct list_elem *e1, struct list_elem *e2, void* aux UNUSED);
 
-/* Some updating functions required in mlfqs */
+/* Some updating functions required in mlfqs mode */
 void update_recent_cpu_all(struct thread *t, void* aux UNUSED);
 void update_load_avg(void);
 void update_priority(struct thread *t, void* aux UNUSED);

@@ -104,7 +104,12 @@ sema_try_down (struct semaphore *sema)
 /* Up or "V" operation on a semaphore.  Increments SEMA's value
    and wakes up one thread of those waiting for SEMA, if any.
 
-   This function may be called from an interrupt handler. */
+   This function may be called from an interrupt handler.
+
+  ************* Our implementation *************
+  Select the thread which has the maximum priority among
+  all waiters and unblock it.
+*/
 void
 sema_up (struct semaphore *sema) 
 {
@@ -113,20 +118,22 @@ sema_up (struct semaphore *sema)
   ASSERT (sema != NULL);
 
   old_level = intr_disable ();
-  if (!list_empty (&sema->waiters)){ 
-    /*** Original implementation ***/
-    /*thread_unblock (list_entry (list_pop_front (&sema->waiters),struct thread, elem));*/
-    
-    /* Get the list_elem that has the highest priority */
+  if (!list_empty (&sema->waiters)){     
+    /* Get the thread that has the highest priority */
     struct list_elem *max_elem = list_max(&(sema->waiters), less_func, NULL);
-    struct thread *max_t = list_entry (max_elem, struct thread, elem);  /* Convert it to thread */
-    /* Remove the elem from waiter_list (!: Remove it before thread_unblock) */
+    struct thread *max_t = list_entry (max_elem, struct thread, elem);
+
+    /* Remove the max_elem from waiter_list */
     list_remove(max_elem);
-    thread_unblock(max_t);  /* Unblock the highest thread in waiter_list */
+
+    /* Unblock the highest thread in waiter_list */
+    thread_unblock(max_t);  
   }
   sema->value++;
   intr_set_level (old_level);
-  thread_yield();           /* Let the main thread relinquish the CPU */
+
+  /* Let the main thread relinquish the CPU */
+  thread_yield();           
 }
 
 static void sema_test_helper (void *sema_);
@@ -198,7 +205,12 @@ lock_init (struct lock *lock)
    This function may sleep, so it must not be called within an
    interrupt handler.  This function may be called with
    interrupts disabled, but interrupts will be turned back on if
-   we need to sleep. */
+   we need to sleep.
+
+   ************* Our implementation *************
+   >>If this lock has no holder, hold it
+   >>Else, do priority donation then hold it
+*/
 void
 lock_acquire (struct lock *lock)
 {
@@ -232,7 +244,9 @@ lock_acquire (struct lock *lock)
       }
       thread_current ()->lock_waiting = lock;           /* This lock is what the tread wait */
     }
-    sema_down (&lock->semaphore);
+
+    /* Try to block it self to wait or hold the lock */
+    sema_down (&lock->semaphore);                       
     lock->holder = thread_current ();
   }
   else{
@@ -274,12 +288,14 @@ lock_release (struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   enum intr_level old_level = intr_disable ();          /* Disable interrupts */
   if(!thread_mlfqs){
-    list_remove(&(lock->elem));                      /* Remove this lock from the thread */
-    if(list_empty(&(thread_current()->lock_list))){  /* No lock any more */
+    list_remove(&(lock->elem));                         /* Remove this lock from the thread */
+    if(list_empty(&(thread_current()->lock_list))){     /* No lock any more */
       thread_current()->priority = thread_current()->ori_priority;  /* Priority change to ori */
     }
     else{
+      /* Initialize a recorder to record the max_priority in lock list */
       int max_remain = -1;
+
       /* Traverse all locks the thread has, fetch the one whose waiter head has max priority */
       for(struct list_elem* iter = list_begin(&(thread_current()->lock_list));
                             iter != list_end(&(thread_current()->lock_list));
@@ -288,7 +304,10 @@ lock_release (struct lock *lock)
         int max_priority = lock_iter->priority_representation;
         max_remain = (max_remain < max_priority) ? max_priority : max_remain;                 
       }
-      if(max_remain == -1){ /* If all those remaining locks has no waiter threads */
+
+      /* If all those remaining locks has no waiter threads, max_remain will be -1,
+          and reset priority to original. Otherwise, update to max_remain */
+      if(max_remain == -1){
         thread_current()->priority = thread_current()->ori_priority;
       }
       else{
@@ -298,10 +317,12 @@ lock_release (struct lock *lock)
   }
   lock->holder = NULL;
   sema_up (&lock->semaphore);
-  if(list_empty(&(lock->semaphore.waiters))){   /* After release, if no more threads waiting */
-    lock->priority_representation = -1;         /* Restore priority representation to -1 */
+
+  /* After release, check whether still have threads waiting for this lock */
+  if(list_empty(&(lock->semaphore.waiters))){
+    lock->priority_representation = -1;            /* Restore priority representation to -1 */
   }
-  intr_set_level(old_level);                            /* Renable interrupts */
+  intr_set_level(old_level);                       /* Renable interrupts */
 }
 
 /* Returns true if the current thread holds LOCK, false
@@ -407,14 +428,14 @@ cond_signal (struct condition *cond, struct lock *lock UNUSED)
   ASSERT (lock_held_by_current_thread (lock));
 
   if (!list_empty (&cond->waiters)){
-    /*** Original implementation ***/
-    /*sema_up (&list_entry (list_pop_front (&cond->waiters),
-                          struct semaphore_elem, elem)->semaphore);*/
-
-    /* Sema up the semaphore which has the highest thread */
+    /* Select the semaphore whose waiters are highest-priority */
     struct list_elem *max_elem = list_max(&(cond->waiters), sema_less_func, NULL);
     struct semaphore_elem *max_se = list_entry (max_elem, struct semaphore_elem, elem);
+
+    /* Remove the selected semaphore from cond_var */
     list_remove(max_elem);
+    
+    /* Sema up the semaphore which has the highest thread */
     sema_up(&(max_se->semaphore));
   }
 }

@@ -113,7 +113,10 @@ thread_start (void)
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
   thread_create ("idle", PRI_MIN, idle, &idle_started);
+
+  /* Initialize load_avg to 0 */
   load_avg = I2FP(0);
+
   /* Start preemptive thread scheduling. */
   intr_enable ();
 
@@ -341,7 +344,13 @@ thread_foreach (thread_action_func *func, void *aux)
     }
 }
 
-/* Sets the current thread's priority to NEW_PRIORITY. */
+/* Sets the current thread's priority to NEW_PRIORITY.
+
+  *************** Our implementation *************
+  Update thread's original priority first. Then update
+  thread's priority if thread has no lock or thread has
+  locks but new_priority is higher.
+*/
 void
 thread_set_priority (int new_priority) 
 {
@@ -352,7 +361,7 @@ thread_set_priority (int new_priority)
   }
   else{                                           /* If thread has other locks */
     if(new_priority > thread_current()->priority){
-      thread_current()->priority = new_priority;
+      thread_current()->priority = new_priority;  /* update priority if new_priority is higher */
     }
   }
   intr_set_level(old_level);                      /* Renable interrupts */
@@ -367,7 +376,13 @@ thread_get_priority (void)
   return thread_current ()->priority;
 }
 
-/* Sets the current thread's nice value to NICE. */
+/* Sets the current thread's nice value to NICE.
+
+  ************ Our implementation **************
+  Set the nice value, and update thread's priority.
+  Then yield current thread to switch to the thread
+  which has the highest priority.
+*/
 void
 thread_set_nice (int nice UNUSED) 
 {
@@ -435,10 +450,11 @@ update_priority(struct thread *t, void* aux UNUSED){
   }
 }
 
+/* Function that increase current thread's recent_cpu by 1 */
 void
 increament_current_thread_recent_cpu(void)
 {
-  if(thread_current() != idle_thread){
+  if(thread_current() != idle_thread){    /* Check current thread is not idle */
     thread_current()->recent_cpu = ADDFI(thread_current()->recent_cpu,1);
   }
 }
