@@ -456,9 +456,11 @@ setup_stack (void **esp, char *argv[], int argc)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
       {
-        *esp = PHYS_BASE;        /* Offset of the PHYS_BASE. */
+        /* Offset of the PHYS_BASE. */
+        *esp = PHYS_BASE - 12;
 
-        uint32_t *argv_ptr[argc];     /* A list of address in the stack. */
+        /* A list of address in the stack. */
+        uint32_t *argv_ptr[argc];
         
         for (int i = argc - 1; i >= 0; i--)
         {
@@ -468,11 +470,14 @@ setup_stack (void **esp, char *argv[], int argc)
           argv_ptr[i] = (uint32_t*)*esp;
         }
 
+        /* Word align. */
         *esp = (uint32_t)*esp & 0xfffffffc;
 
+        /* Push the last arg to the stack. */
         *esp = *esp - 4;
         (*(int *)(*esp)) = 0;
 
+        /* Push the addresses of args to the stack. */
         *esp = *esp - 4;
         for (int i = argc - 1; i >= 0; i--)
         {
@@ -482,9 +487,11 @@ setup_stack (void **esp, char *argv[], int argc)
 
         (*(uintptr_t **)(*esp)) = *esp + 4;
 
+        /* Push the argc to the stack. */
         *esp = *esp - 4;
         *(int *)(*esp) = argc;
 
+        /* Return address is here. */
         *esp = *esp - 4;
         (*(int *)(*esp)) = 0;
       }
