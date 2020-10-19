@@ -131,7 +131,7 @@ main (void)
   
   /* Run actions specified on kernel command line. */
   run_actions (argv);
-
+  printf("actions run done\n");
   /* Finish up. */
   shutdown ();
   thread_exit ();
@@ -282,10 +282,13 @@ static void
 run_task (char **argv)
 {
   const char *task = argv[1];
+  printf("task: %s\n", task);
   
   printf ("Executing '%s':\n", task);
 #ifdef USERPROG
+  printf("here to process wait()\n");
   process_wait (process_execute (task));
+  printf("process wait() should be finished\n");
 #else
   run_test (task);
 #endif
@@ -337,6 +340,7 @@ run_actions (char **argv)
           PANIC ("action `%s' requires %d argument(s)", *argv, a->argc - 1);
 
       /* Invoke action and advance. */
+      /*printf("%s", argv);*/
       a->function (argv);
       argv += a->argc;
     }
