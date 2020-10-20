@@ -183,6 +183,9 @@ thread_create (const char *name, int priority,
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
 
+  /* We want the setting up of thread's stack done atomically */
+  enum intr_level old_level = intr_disable ();
+
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
@@ -198,9 +201,27 @@ thread_create (const char *name, int priority,
   sf->eip = switch_entry;
   sf->ebp = 0;
 
+  /* Re-enable the interrupts */
+  intr_set_level(old_level);
+
+#ifdef USERPROG
+  /* Owned by userprog/process.c. */
+  struct thread* parent = thread_current();
+  t->pagedir = NULL;                  /* Initialize the pagedir to NULL */
+  t->parent_t = parent;               /* The running thread is the parent thread */
+  list_init(&(t->children_t_list));
+  t->file_running = NULL;
+  t->isloaded = false;
+  sema_init(&(t->loading_sema), 0);   /* Initialize the semaphore for loading */
+  t->exit_code = -1;                   /* By default, the exit_code is -1 */  
+  
+  /* Push the thread created into parent's children threads list */
+  list_push_back (&(parent->children_t_list), &(t->childelem));
+#endif
+
   /* Add to run queue. */
   thread_unblock (t);
-
+  
   return tid;
 }
 
@@ -247,6 +268,24 @@ const char *
 thread_name (void) 
 {
   return thread_current ()->name;
+}
+
+/* Returns the corresponding thread whose tid is the given parameter */
+struct thread *
+find_thread_by_tid(tid_t tid)
+{
+  struct thread* target_thread = NULL;
+  for(struct list_elem* iter = list_rbegin(&all_list);
+                        iter != list_rend(&all_list);
+                        iter = list_prev(iter)){
+    struct thread *t = list_entry(iter, struct thread, allelem);
+    ASSERT (is_thread(t));
+    if(t->tid == tid){
+      target_thread = t;
+      break;
+    }
+  }
+  return target_thread;
 }
 
 /* Returns the running thread.
@@ -463,6 +502,18 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->magic = THREAD_MAGIC;
+
+#ifdef USERPROG
+  /* Owned by userprog/process.c. */
+  /* For the thread created by thread_init(), it has no parent thread */
+  t->pagedir = NULL;                  /* Initialize the pagedir to NULL */
+  t->parent_t = NULL;                 /* The running thread is the parent thread */
+  list_init(&(t->children_t_list));
+  t->file_running = NULL;
+  t->isloaded = false;                /* By default, not loaded */
+  sema_init(&(t->loading_sema), 0);   /* Initialize the semaphore for loading */
+  t->exit_code = -1;                   /* By default, the exit_code is -1 */   
+#endif
 
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
