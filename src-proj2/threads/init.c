@@ -131,7 +131,7 @@ main (void)
   
   /* Run actions specified on kernel command line. */
   run_actions (argv);
-  printf("actions run done\n");
+  printf("run wan le ma\n");
   /* Finish up. */
   shutdown ();
   thread_exit ();
@@ -286,9 +286,7 @@ run_task (char **argv)
   
   printf ("Executing '%s':\n", task);
 #ifdef USERPROG
-  printf("here to process wait()\n");
   process_wait (process_execute (task));
-  printf("process wait() should be finished\n");
 #else
   run_test (task);
 #endif

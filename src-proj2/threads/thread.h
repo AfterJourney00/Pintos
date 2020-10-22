@@ -102,7 +102,8 @@ struct thread
     struct list_elem childelem;         /* List element for children threads list. */    
     struct file* file_running;          /* The file run by this thread */
     struct semaphore loading_sema;      /* The semaphore using for loading file */
-    bool isloaded;                      /* the file loaded to the thread or not */
+    bool isloaded;                      /* The file loaded to the thread or not */
+    bool exited;                        /* Record the thread exited or not */
     int exit_code;                      /* The exit code returned when the thread exits */
 #endif
 
@@ -131,6 +132,7 @@ struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
 struct thread *find_thread_by_tid(tid_t tid);
+void remove_thread_from_alllist(struct thread * t);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);

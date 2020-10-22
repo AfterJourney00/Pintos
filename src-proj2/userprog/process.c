@@ -43,6 +43,7 @@ process_execute (const char *file_name)
   /* Parse file_name to have exec_name. */
   /* For example: 'args-single onearg' ===> 'args-single' & 'onearg' */
   exec_name = strtok_r(file_name, " ", &save_ptr);
+  printf("%s\n", file_name);
 
   /* If the input is not a valid file_name */
   if (exec_name == NULL)
@@ -63,7 +64,6 @@ process_execute (const char *file_name)
   while(!t->isloaded){
     sema_down(&(t->loading_sema));
   }
-  printf("process execute finish, with tid: %d\n", tid);
   /*if (tid == TID_ERROR)
     palloc_free_page (fn_copy); */
   return tid;
@@ -74,9 +74,6 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
-  printf("\n");
-  printf("start_process\n");
-  printf("\n");
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
@@ -94,7 +91,7 @@ start_process (void *file_name_)
        token = strtok_r (NULL, " ", &save_ptr))
   {
     argv[argc] = token;
-    argc++;
+    argc++; 
   }
 
   /* Initialize interrupt frame and load executable. */
@@ -114,6 +111,8 @@ start_process (void *file_name_)
     thread_current()->isloaded = true;
   }
   else{
+    /* Load fail, kernel terminate this thread, set exit_code to -2 */
+    thread_current()->exit_code = -1;
     palloc_free_page (file_name);
     thread_exit ();
   }
@@ -145,60 +144,95 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-  /* Find the pointer pointing to the thread we want to wait */
   struct thread* target_thread = find_thread_by_tid(child_tid);
+  sema_down(&(target_thread->loading_sema));
+  /*thread_unblock(target_thread);*/
+  return target_thread->exit_code;
+  /*struct thread* cur = thread_current();*/
+
+  /* Find the pointer pointing to the thread we want to wait */
+  /*struct thread* target_thread = find_thread_by_tid(child_tid);*/
 
   /* If the child_tid is ERROR or not child of calling thread or already wait: return -1 */
-  if(child_tid == TID_ERROR || target_thread->parent_t != thread_current()
-                            || target_thread->exit_code == 0){
+  /*if(child_tid == TID_ERROR || target_thread->parent_t != cur || target_thread->exit_code != -1){
     return -1;
+  }*/
+
+  /* Traverse children list, unblock those blocked threads */
+  /*for(struct list_elem* iter = list_begin(&(cur->children_t_list));
+                        iter != list_end(&(cur->children_t_list));
+                        iter = list_next(iter)){
+    struct thread* t = list_entry(iter, struct thread, childelem);
+    if(t->status == THREAD_BLOCKED){
+      thread_unblock(t);
+    }
+  }*/
+
+  /*
+  while(target_thread->status != THREAD_DYING){
+    sema_down(&(target_thread->loading_sema));
   }
-  /* WE CODE HERE */
+  intr_disable();*/
+  /*target_thread->exit_code = 0;*/
+  /*remove_thread_from_alllist(target_thread);
+  intr_enable();
+  return 0;*/
 }
 
 /* Free the current process's resources. */
 void
 process_exit (void)
 {
-  printf("\n");
-  printf("process exiting\n");
-  printf("\n");
   struct thread *cur = thread_current ();
   uint32_t *pd;
+  printf ("%s: exit(%d)\n", cur->name, cur->exit_code);
+  sema_up(&(thread_current()->loading_sema));
 
-  size_t waiter_list_len = list_size(&((cur->loading_sema).waiters));
+  
 
-  /* Remove and unblock all threads in the semaphore */
-  for(size_t i = 0; i < waiter_list_len; i ++){
+  /*intr_disable();
+  thread_block();
+  intr_enable();*/
+  /*size_t waiter_list_len = list_size(&((cur->loading_sema).waiters));*/
+
+  /* Remove and unblock all parent threads in the semaphore, 
+      tell them this thread is going to exit */
+  /*for(size_t i = 0; i < waiter_list_len; i ++){
     sema_up(&(cur->loading_sema));
-  }
+  }*/
 
   /* Clear the children list of the exiting thread */
-  /* Set all the children threads' parent thread to NULL */
-  for(struct list_elem* iter = list_begin(&(cur->children_t_list));
-                        iter != list_end(&(cur->children_t_list));
-                        iter = list_next(iter)){
-    struct thread* t = list_entry(iter, struct thread, childelem);
-    t->parent_t = NULL;
-    list_pop_front(&(cur->children_t_list));
-  }
+  /* If child has exited or occured exception, remove it */
+  /* But if child thread has not exited, block parent thread */
+  /*while(!list_empty(&(cur->children_t_list))){
+    for(struct list_elem* iter = list_begin(&(cur->children_t_list));
+                          iter != list_end(&(cur->children_t_list));
+                          iter = list_next(iter)){
+      struct thread* t = list_entry(iter, struct thread, childelem);
+      if(t->exit_code != -1){
+        t->parent_t = NULL;
+        list_remove(iter);
+      }
+    }*/
+
+    /* If this thread has child not exited, block this thread to wait */
+    /* I think may be we can awake this thread in its parent's process_wait()*/
+    /*intr_disable();
+    thread_block();
+    intr_enable();
+  }*/
+
+  /* After unblocking, this thread has no child not finished yet, and
+      we do the following operations */
 
   /* Close the file run by the thread */
-  file_close(cur->file_running);
-  cur->file_running = NULL;
+  /*file_close(cur->file_running);
+  cur->file_running = NULL;*/
 
   /* Remove this thread from its parent's children list */
-  if(cur->parent_t != NULL){
-    for(struct list_elem* iter = list_begin(&(cur->parent_t->children_t_list));
-                          iter != list_end(&(cur->parent_t->children_t_list));
-                          iter = list_next(iter)){
-      struct thread *t = list_entry(iter, struct thread, childelem);
-      if(t->tid == cur->tid){
-        list_remove(iter);
-        break;
-      }
-    }
-  }
+  /*if(cur->parent_t != NULL){
+    list_remove(&(cur->childelem));
+  }*/
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -541,7 +575,6 @@ setup_stack (void **esp, char *argv[], int argc)
   bool success = false;
   
   kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  printf("%d\n", argc);
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
@@ -551,37 +584,41 @@ setup_stack (void **esp, char *argv[], int argc)
         /* *esp = PHYS_BASE - 12; */
         /* Initial the stack pointer as the base physical address */
         *esp = PHYS_BASE;
-        printf("%08jx\n", PHYS_BASE);
 
         /* A list of address in the stack. */
-        uint32_t *argv_ptr[argc];
+        char *argv_ptr[argc];
         
         for (int i = argc - 1; i >= 0; i--)
         {
           /* Allocate space for the command line. */
-          *esp = *esp - sizeof(char) * (strlen (argv[i]) + 1);
-          memcpy (*esp, argv[i], sizeof(char) * (strlen (argv[i]) + 1));
-          argv_ptr[i] = *(uint32_t*)esp;
+          /*printf("%s\n", argv[i]);*/
+          *esp = *esp - (strlen (argv[i]) + 1);
+          /*printf("%p\n", *esp);*/
+          memcpy (*esp, argv[i], (strlen (argv[i]) + 1));
+          argv_ptr[i] = *(char**)esp;
         }
 
         /* Word align. */
-        /* *esp = (uint32_t)*esp & 0xfffffffc; */
-        *esp = *esp - (4 - (*(uint32_t*)esp % 4));
+        int remainder = 4 - (*(uint8_t*)esp % 4);
+        for(int i = 0; i < remainder; i++){
+          *esp = *esp - 1;
+          *(uint8_t *)(*esp) = (uint8_t)0;
+        }
 
-        /* Push the last arg to the stack. */
+        /* Push the last null to the stack. */
         *esp = *esp - 4;
-        *(int *)(*esp) = 0;
+        *(char **)(*esp) = (char*)0;
 
         /* Push the addresses of args to the stack. */
         for (int i = argc - 1; i >= 0; i--)
         {
           *esp = *esp - 4;
-          *(uint32_t*)(*esp) = argv_ptr[i];
+          *(char**)(*esp) = argv_ptr[i];
         }
 
         /* Push the head of argv list into the stack */
         *esp = *esp - 4;
-        *(uintptr_t *)(*esp) = *esp + 4;
+        *(char**)(*esp) = (char*)(*esp) + 4;
 
         /* Push the argc to the stack. */
         *esp = *esp - 4;
@@ -589,11 +626,8 @@ setup_stack (void **esp, char *argv[], int argc)
 
         /* Return address is here. */
         *esp = *esp - 4;
-        *(int *)(*esp) = 0;
-
-        /* Check the correctness of stack setting up */
-        /*printf("%08jx\n", *esp - PHYS_BASE);
-        hex_dump(0, PHYS_BASE, 8, true);*/
+        *(void**)(*esp) = (void*)0;
+        hex_dump(*esp, *esp, PHYS_BASE - *esp, true);
       }
       else
         palloc_free_page (kpage);
