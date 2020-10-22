@@ -47,7 +47,7 @@ process_execute (const char *file_name)
   /* If the input is not a valid file_name */
   if (exec_name == NULL)
     return TID_ERROR;
-   
+  
   /* Create a new thread named FILE_NAME, run function start_process with paras save_ptr */
   tid = thread_create (exec_name, PRI_DEFAULT, start_process, fn_copy);
   if(tid == TID_ERROR){
@@ -57,15 +57,14 @@ process_execute (const char *file_name)
 
   /* Find the pointer pointing to the child thread */
   struct thread* t = find_thread_by_tid(tid);
-
-  /* Let the parent thread(current thread) block itself */
-  /* Sema up at the end of loading */
+  
+  /* Synchronization: use condition variable to wait child thread */
+  lock_acquire(&(t->loading_lock));
   if(!t->isloaded){
-    sema_down(&(t->loading_sema));
+    cond_wait(&(t->loading_cond), &(t->loading_lock));
   }
+  lock_release(&(t->loading_lock));
 
-  /*if (tid == TID_ERROR)
-    palloc_free_page (fn_copy); */
   return tid;
 }
 
@@ -117,7 +116,7 @@ start_process (void *file_name_)
   else{
     /* free the memory allocated by malloc before */
     free(argv);
-    
+
     thread_current()->exit_code = -1;
     palloc_free_page (file_name);
     thread_exit ();
@@ -151,8 +150,13 @@ int
 process_wait (tid_t child_tid) 
 {
   struct thread* target_thread = find_thread_by_tid(child_tid);
-  sema_down(&(target_thread->loading_sema));
+  lock_acquire(&(target_thread->loading_lock));
+  if(target_thread->status != THREAD_DYING){
+    cond_wait(&(target_thread->loading_cond), &(target_thread->loading_lock));
+  }
+  lock_release(&(target_thread->loading_lock));
   /*thread_unblock(target_thread);*/
+  
   return target_thread->exit_code;
   /*struct thread* cur = thread_current();*/
 
@@ -191,9 +195,9 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
-  printf ("%s: exit(%d)\n", cur->name, cur->exit_code);
-  sema_up(&(thread_current()->loading_sema));
-
+  lock_acquire(&(cur->loading_lock));
+  cond_broadcast(&(cur->loading_cond), &(cur->loading_lock));
+  lock_release(&(cur->loading_lock));
   
 
   /*intr_disable();
@@ -451,13 +455,14 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
-  /*** Our implementation ***/
-  /* If file loaded successfully, sema_up to tell parent thread */
   success = true;
-  sema_up(&(t->loading_sema));
-  /*** Our implementation ***/
 
- done:
+  /* Synchronization: loading finished, broadcast the condition variable */
+  lock_acquire(&(t->loading_lock));
+  cond_broadcast(&(t->loading_cond), &(t->loading_lock));
+  lock_release(&(t->loading_lock));
+
+done:
   /* We arrive here whether the load is successful or not. */
   file_close (file);
   return success;

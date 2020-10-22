@@ -207,14 +207,7 @@ thread_create (const char *name, int priority,
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
   struct thread* parent = thread_current();
-  t->pagedir = NULL;                  /* Initialize the pagedir to NULL */
   t->parent_t = parent;               /* The running thread is the parent thread */
-  list_init(&(t->children_t_list));
-  t->file_running = NULL;
-  t->isloaded = false;
-  t->exited = false;
-  sema_init(&(t->loading_sema), 0);   /* Initialize the semaphore for loading */
-  t->exit_code = 0;                   /* By default, the exit_code is -1 */  
   
   /* Push the thread created into parent's children threads list */
   list_push_back (&(parent->children_t_list), &(t->childelem));
@@ -330,17 +323,14 @@ thread_exit (void)
 
 #ifdef USERPROG
   process_exit ();
-  /*thread_current ()->status = THREAD_DYING;
-  sema_up(&(thread_current()->loading_sema));
-  goto done;*/
 #endif
 
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->allelem);
-  thread_current ()->status = THREAD_DYING;
+  list_remove (&thread_current()->allelem);  
+  thread_current()->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }
@@ -522,8 +512,9 @@ init_thread (struct thread *t, const char *name, int priority)
   t->file_running = NULL;
   t->isloaded = false;                /* By default, not loaded */
   t->exited = false;                  /* By default, not exited */
-  sema_init(&(t->loading_sema), 0);   /* Initialize the semaphore for loading */
-  t->exit_code = 0;                  /* By default, the exit_code is -1 */   
+  lock_init(&(t->loading_lock));      /* Initialize the loading lock */
+  cond_init(&(t->loading_cond));      /* Initialize the loading cond */
+  t->exit_code = 0;                   /* By default, the exit_code is -1 */   
 #endif
 
   old_level = intr_disable ();
