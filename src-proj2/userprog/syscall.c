@@ -50,12 +50,9 @@ syscall_handler (struct intr_frame *f)
     case SYS_WRITE:
     {
       /* parse the arguments first */
-      printf("reach\n");
       int fd = *((int*)(f->esp) + 1);
-      printf("%d\n", fd);
-      void* buffer = (void*)((int*)(f->esp) + 2);
+      const void* buffer = (const void*)*((int*)(f->esp) + 2);
       unsigned size = *((unsigned*)(f->esp) + 3);
-      printf("size: %d\n", size);
       f->eax = write(fd, buffer, size);
     }
 

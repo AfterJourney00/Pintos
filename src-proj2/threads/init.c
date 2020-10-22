@@ -131,7 +131,7 @@ main (void)
   
   /* Run actions specified on kernel command line. */
   run_actions (argv);
-  printf("run wan le ma\n");
+  
   /* Finish up. */
   shutdown ();
   thread_exit ();

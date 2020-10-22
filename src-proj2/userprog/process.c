@@ -20,7 +20,7 @@
 #include "threads/vaddr.h"
 
 static thread_func start_process NO_RETURN;
-static bool load (const char *cmdline[], void (**eip) (void), void **esp, int argc);
+static bool load (char **file_name, void (**eip) (void), void **esp, int argc);
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -43,7 +43,6 @@ process_execute (const char *file_name)
   /* Parse file_name to have exec_name. */
   /* For example: 'args-single onearg' ===> 'args-single' & 'onearg' */
   exec_name = strtok_r(file_name, " ", &save_ptr);
-  printf("%s\n", file_name);
 
   /* If the input is not a valid file_name */
   if (exec_name == NULL)
@@ -61,9 +60,10 @@ process_execute (const char *file_name)
 
   /* Let the parent thread(current thread) block itself */
   /* Sema up at the end of loading */
-  while(!t->isloaded){
+  if(!t->isloaded){
     sema_down(&(t->loading_sema));
   }
+
   /*if (tid == TID_ERROR)
     palloc_free_page (fn_copy); */
   return tid;
@@ -80,8 +80,9 @@ start_process (void *file_name_)
 
   /*** Our definition ***/
   char *save_ptr;
-  char *argv[25];                 /* The splitted command line here. */
-  int argc = 0;                   /* Count of arguments passed in on one command line. */
+  char **argv = (char**)malloc(128); /* Limit the arguments less than 128 args */
+  //char *argv[25];                  /* The splitted command line here. */
+  int argc = 0;                      /* Count of arguments passed in on one command line. */
 
   /*** Our implementation ***/
   /* argv[0] is the real file name, and remaining are arguments */
@@ -93,13 +94,13 @@ start_process (void *file_name_)
     argv[argc] = token;
     argc++; 
   }
-
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (argv, &if_.eip, &if_.esp, argc);
+
   if(success){
     /* Set the file of the thread to the file loaded */ 
     thread_current()->file_running = filesys_open(argv[0]);
@@ -109,9 +110,14 @@ start_process (void *file_name_)
 
     /* The thread has been loaded and set successfully */
     thread_current()->isloaded = true;
+
+    /* free the memory allocated by malloc before */
+    free(argv);
   }
   else{
-    /* Load fail, kernel terminate this thread, set exit_code to -2 */
+    /* free the memory allocated by malloc before */
+    free(argv);
+    
     thread_current()->exit_code = -1;
     palloc_free_page (file_name);
     thread_exit ();
@@ -331,7 +337,7 @@ struct Elf32_Phdr
 #define PF_W 2          /* Writable. */
 #define PF_R 4          /* Readable. */
 
-static bool setup_stack (void **esp, char *argv[], int argc);
+static bool setup_stack (void **esp, char **argv, int argc);
 static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
@@ -342,7 +348,7 @@ static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
    and its initial stack pointer into *ESP.
    Returns true if successful, false otherwise. */
 bool
-load (const char *file_name[], void (**eip) (void), void **esp, int argc) 
+load (char **file_name, void (**eip) (void), void **esp, int argc) 
 {
   /* Here, file_name[0] is the real file name, and remaining are arguments */
   struct thread *t = thread_current ();
@@ -362,7 +368,7 @@ load (const char *file_name[], void (**eip) (void), void **esp, int argc)
   file = filesys_open (file_name[0]);
   if (file == NULL) 
     {
-      printf ("load: %s: open failed\n", file_name);
+      printf ("load: %s: open failed\n", file_name[0]);
       goto done; 
     }
 
@@ -568,7 +574,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
-setup_stack (void **esp, char *argv[], int argc) 
+setup_stack (void **esp, char **argv, int argc) 
 {
   /* esp is the pointer pointing to stack pointer, *esp is the stack pointer */
   uint8_t *kpage;
@@ -627,7 +633,6 @@ setup_stack (void **esp, char *argv[], int argc)
         /* Return address is here. */
         *esp = *esp - 4;
         *(void**)(*esp) = (void*)0;
-        hex_dump(*esp, *esp, PHYS_BASE - *esp, true);
       }
       else
         palloc_free_page (kpage);
