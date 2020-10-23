@@ -333,26 +333,24 @@ write(int fd, const void *buffer, unsigned size)
   int res;
 
   /* Synchronization: do write operation holding the file_lock */
-
   lock_acquire(&file_lock);
   
   if(fd == STDIN_FILENO){
     res = -1;
   }
-  else if(fd == STDOUT_FILENO){   
+  else if(fd == STDOUT_FILENO){
     intr_disable(); 
     putbuf(buffer, size);
     intr_enable();
     res = size;
   }
   else{
-    
     struct file_des *f = find_des_by_fd(fd);
     if(f == NULL){
       res = -1;
     }
     else{
-      res = file_write(f, buffer, size);
+      res = file_write(f->file_ptr, buffer, size);
     }
   }
 
