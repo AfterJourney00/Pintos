@@ -57,7 +57,6 @@ bad_ptr(const char* file)
 struct file_des*
 find_des_by_fd(int fd)
 {
-  lock_acquire(&file_lock);
   struct file_des* target_file = NULL;
   for(struct list_elem* iter = list_begin(&file_list);
                         iter != list_end(&file_list);
@@ -68,7 +67,7 @@ find_des_by_fd(int fd)
       break;
     }
   }
-  lock_release(&file_lock);
+
   return target_file;
 }
 
@@ -294,6 +293,7 @@ read(int fd, void *buffer, unsigned size)
   
   struct file_des* f;
   int success = 0;
+
   /* Synchronization: do read operation holding the file_lock */
   lock_acquire(&file_lock);
 
@@ -326,15 +326,38 @@ read(int fd, void *buffer, unsigned size)
 int
 write(int fd, const void *buffer, unsigned size)
 {
-  if(!is_user_vaddr(buffer + size)){
+  if(bad_ptr(buffer)){
     exit(-1);
   }
-  if(fd == 1){   
+
+  int res;
+
+  /* Synchronization: do write operation holding the file_lock */
+
+  lock_acquire(&file_lock);
+  
+  if(fd == STDIN_FILENO){
+    res = -1;
+  }
+  else if(fd == STDOUT_FILENO){   
     intr_disable(); 
     putbuf(buffer, size);
     intr_enable();
-    return size;
+    res = size;
   }
+  else{
+    
+    struct file_des *f = find_des_by_fd(fd);
+    if(f == NULL){
+      res = -1;
+    }
+    else{
+      res = file_write(f, buffer, size);
+    }
+  }
+
+  lock_release(&file_lock);
+  return res;
 }
 
 void
