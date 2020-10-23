@@ -105,6 +105,14 @@ syscall_handler (struct intr_frame *f)
       break;
     }
 
+    case SYS_EXEC:
+    {
+      /* parse the arguments first */
+      const char* cmd = (const char*)*((int*)(f->esp) + 1);
+      f->eax = exec(cmd);
+      break;
+    }
+
     case SYS_CREATE:
     {
       /* parse the arguments first */
@@ -194,12 +202,10 @@ pid_t
 exec(const char* cmd_line)
 {
   /* First, check the pointer is valid or not */
-  if(!is_user_vaddr(cmd_line)){
+  if(bad_ptr(cmd_line)){
     exit(-1);
   }
-  
   return process_execute(cmd_line);
-
 }
 
 /* syscall: CREATE */

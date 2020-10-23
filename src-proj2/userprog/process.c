@@ -102,10 +102,10 @@ start_process (void *file_name_)
 
   if(success){
     /* Set the file of the thread to the file loaded */ 
-    thread_current()->file_running = filesys_open(argv[0]);
+    //thread_current()->file_running = filesys_open(argv[0]);
 
     /* Deny write */
-    file_deny_write(thread_current()->file_running);
+    //file_deny_write(thread_current()->file_running);
 
     /* The thread has been loaded and set successfully */
     thread_current()->isloaded = true;
@@ -150,10 +150,13 @@ int
 process_wait (tid_t child_tid) 
 {
   struct thread* target_thread = find_thread_by_tid(child_tid);
+  
   lock_acquire(&(target_thread->loading_lock));
+  
   if(target_thread->status != THREAD_DYING){
     cond_wait(&(target_thread->loading_cond), &(target_thread->loading_lock));
   }
+  
   lock_release(&(target_thread->loading_lock));
   /*thread_unblock(target_thread);*/
   
