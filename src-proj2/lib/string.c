@@ -244,7 +244,7 @@ strtok_r (char *s, const char *delimiters, char **save_ptr)
   if (s == NULL)
     s = *save_ptr;
   ASSERT (s != NULL);
-
+  
   /* Skip any DELIMITERS at our current position. */
   while (strchr (delimiters, *s) != NULL) 
     {
@@ -271,6 +271,7 @@ strtok_r (char *s, const char *delimiters, char **save_ptr)
     }
   else 
     *save_ptr = s;
+  
   return token;
 }
 

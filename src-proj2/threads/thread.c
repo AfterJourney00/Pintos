@@ -511,7 +511,7 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&(t->children_t_list));
   t->file_running = NULL;
   t->isloaded = false;                /* By default, not loaded */
-  t->exited = false;                  /* By default, not exited */
+  t->waited = 0;                      /* By default, not waited */
   lock_init(&(t->loading_lock));      /* Initialize the loading lock */
   cond_init(&(t->loading_cond));      /* Initialize the loading cond */
   t->exit_code = 0;                   /* By default, the exit_code is -1 */   

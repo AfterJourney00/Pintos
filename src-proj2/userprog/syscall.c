@@ -71,6 +71,36 @@ find_des_by_fd(int fd)
   return target_file;
 }
 
+void
+clear_files(struct thread* t)
+{
+  ASSERT(t == thread_current());
+
+  for(struct list_elem* iter = list_begin(&file_list);
+                        iter != list_end(&file_list);
+                        iter = list_next(iter)){
+    struct file_des* fdes = list_entry(iter, struct file_des, filelem);
+    printf("hereee\n");
+    printf("fdes->opener: %p\n", fdes->opener);
+    if(fdes->opener == t){
+      printf("hereee11\n");
+      list_remove(iter);
+      printf("hereee12\n");
+      file_close(fdes->file_ptr);
+      printf("hereee13\n");
+      free(fdes);
+      printf("hereee14\n");
+    }
+    else{
+      printf("hereee12w\n");
+    }
+  }
+
+  return;
+}
+
+
+/* Syscall handler */
 static void
 syscall_handler (struct intr_frame *f) 
 {
@@ -110,6 +140,14 @@ syscall_handler (struct intr_frame *f)
       /* parse the arguments first */
       const char* cmd = (const char*)*((int*)(f->esp) + 1);
       f->eax = exec(cmd);
+      break;
+    }
+
+    case SYS_WAIT:
+    {
+      /* parse the arguments first */
+      pid_t pid = *((pid_t*)(f->esp) + 1);
+      f->eax = wait(pid);
       break;
     }
 
@@ -191,7 +229,7 @@ exit(int status)
   cur->exit_code = status;
 
   intr_disable();
-  printf ("%s: exit(%d)\n", cur->name, cur->exit_code);
+  printf ("%s: exit(%d)\n", cur->name, status);
   intr_enable();
   thread_exit();
   return;
@@ -206,6 +244,13 @@ exec(const char* cmd_line)
     exit(-1);
   }
   return process_execute(cmd_line);
+}
+
+/* syscall: WAIT */
+int
+wait(pid_t pid)
+{
+  return process_wait(pid);
 }
 
 /* syscall: CREATE */
@@ -374,7 +419,9 @@ close(int fd)
   else{
     lock_acquire(&file_lock);
 
-    for(struct list_elem* iter = list_begin(&file_list);
+    list_remove(&(f->filelem));
+    free(f);
+    /*for(struct list_elem* iter = list_begin(&file_list);
                           iter != list_end(&file_list);
                           iter = list_next(iter)){
       struct file_des * temp = list_entry(iter, struct file_des, filelem);
@@ -384,7 +431,7 @@ close(int fd)
         free(f);
         break;
       }
-    }
+    }*/
     lock_release(&file_lock);
     return;
   }

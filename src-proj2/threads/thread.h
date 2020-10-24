@@ -101,11 +101,10 @@ struct thread
     struct list children_t_list;        /* List of children threads */
     struct list_elem childelem;         /* List element for children threads list. */    
     struct file* file_running;          /* The file run by this thread */
-    struct semaphore loading_sema;      /* The semaphore using for loading file */
     struct lock loading_lock;           /* lock for parent thread to wait */
     struct condition loading_cond;      /* cond variable for parent thread to wait */
     bool isloaded;                      /* The file loaded to the thread or not */
-    bool exited;                        /* Record the thread exited or not */
+    int waited;                         /* Record the thread waited, not waited, or terminated */
     int exit_code;                      /* The exit code returned when the thread exits */
 #endif
 

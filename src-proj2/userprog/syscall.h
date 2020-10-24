@@ -1,5 +1,7 @@
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
+#include "threads/thread.h"
+
 typedef int pid_t;
 
 void syscall_init (void);
@@ -17,4 +19,9 @@ int write(int fd, const void *buffer, unsigned size);
 void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
+
+/* Helper functions */
+int bad_ptr(const char* file);
+void clear_files(struct thread* t);
+
 #endif /* userprog/syscall.h */

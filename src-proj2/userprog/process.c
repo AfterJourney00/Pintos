@@ -18,6 +18,7 @@
 #include "threads/thread.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "userprog/syscall.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (char **file_name, void (**eip) (void), void **esp, int argc);
@@ -30,20 +31,25 @@ tid_t
 process_execute (const char *file_name) 
 { 
   char *fn_copy;
+  char* fn_for_parse;
   tid_t tid;
   char *exec_name = NULL, *save_ptr = NULL;    /* For parsing. */
-
+  
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
+  fn_for_parse = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-
+  if (fn_for_parse == NULL)
+    return TID_ERROR;
+  strlcpy (fn_for_parse, file_name, PGSIZE);
+  
   /* Parse file_name to have exec_name. */
   /* For example: 'args-single onearg' ===> 'args-single' & 'onearg' */
-  exec_name = strtok_r(file_name, " ", &save_ptr);
-
+  exec_name = strtok_r(fn_for_parse, " ", &save_ptr);
+  
   /* If the input is not a valid file_name */
   if (exec_name == NULL)
     return TID_ERROR;
@@ -57,6 +63,9 @@ process_execute (const char *file_name)
 
   /* Find the pointer pointing to the child thread */
   struct thread* t = find_thread_by_tid(tid);
+  if(t == NULL){
+    return TID_ERROR;
+  }
   
   /* Synchronization: use condition variable to wait child thread */
   lock_acquire(&(t->loading_lock));
@@ -64,7 +73,6 @@ process_execute (const char *file_name)
     cond_wait(&(t->loading_cond), &(t->loading_lock));
   }
   lock_release(&(t->loading_lock));
-
   return tid;
 }
 
@@ -116,7 +124,7 @@ start_process (void *file_name_)
   else{
     /* free the memory allocated by malloc before */
     free(argv);
-
+    thread_current()->waited = -1;      /* load fail: set waited to -1 */
     thread_current()->exit_code = -1;
     palloc_free_page (file_name);
     thread_exit ();
@@ -149,47 +157,26 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
-  struct thread* target_thread = find_thread_by_tid(child_tid);
-  
-  lock_acquire(&(target_thread->loading_lock));
-  
-  if(target_thread->status != THREAD_DYING){
-    cond_wait(&(target_thread->loading_cond), &(target_thread->loading_lock));
-  }
-  
-  lock_release(&(target_thread->loading_lock));
-  /*thread_unblock(target_thread);*/
-  
-  return target_thread->exit_code;
-  /*struct thread* cur = thread_current();*/
-
-  /* Find the pointer pointing to the thread we want to wait */
-  /*struct thread* target_thread = find_thread_by_tid(child_tid);*/
-
-  /* If the child_tid is ERROR or not child of calling thread or already wait: return -1 */
-  /*if(child_tid == TID_ERROR || target_thread->parent_t != cur || target_thread->exit_code != -1){
+  if(child_tid == TID_ERROR){
     return -1;
-  }*/
-
-  /* Traverse children list, unblock those blocked threads */
-  /*for(struct list_elem* iter = list_begin(&(cur->children_t_list));
-                        iter != list_end(&(cur->children_t_list));
-                        iter = list_next(iter)){
-    struct thread* t = list_entry(iter, struct thread, childelem);
-    if(t->status == THREAD_BLOCKED){
-      thread_unblock(t);
-    }
-  }*/
-
-  /*
-  while(target_thread->status != THREAD_DYING){
-    sema_down(&(target_thread->loading_sema));
   }
-  intr_disable();*/
-  /*target_thread->exit_code = 0;*/
-  /*remove_thread_from_alllist(target_thread);
-  intr_enable();
-  return 0;*/
+  else{
+    struct thread* target_thread = find_thread_by_tid(child_tid);
+    if(target_thread == NULL || target_thread->parent_t != thread_current()
+                             || target_thread->waited != 0){
+      return -1;
+    }
+    else{
+      lock_acquire(&(target_thread->loading_lock));
+      
+      if(target_thread->status != THREAD_DYING){
+        cond_wait(&(target_thread->loading_cond), &(target_thread->loading_lock));
+      }
+      
+      lock_release(&(target_thread->loading_lock));
+      return target_thread->exit_code;
+    }
+  }
 }
 
 /* Free the current process's resources. */
@@ -198,54 +185,23 @@ process_exit (void)
 {
   struct thread *cur = thread_current ();
   uint32_t *pd;
+
+  /* Clear thread's children list */
+  for(struct list_elem* iter = list_begin(&(cur->children_t_list));
+                        iter != list_end(&(cur->children_t_list));
+                        iter = list_next(iter)){
+    list_remove(iter);
+  }
+  
+  /* Close those files opened by this thread */ 
+  /*clear_files(cur);*/
+
+  /* Reset the parent_t to NULL */
+  cur->parent_t = NULL;
+
   lock_acquire(&(cur->loading_lock));
   cond_broadcast(&(cur->loading_cond), &(cur->loading_lock));
   lock_release(&(cur->loading_lock));
-  
-
-  /*intr_disable();
-  thread_block();
-  intr_enable();*/
-  /*size_t waiter_list_len = list_size(&((cur->loading_sema).waiters));*/
-
-  /* Remove and unblock all parent threads in the semaphore, 
-      tell them this thread is going to exit */
-  /*for(size_t i = 0; i < waiter_list_len; i ++){
-    sema_up(&(cur->loading_sema));
-  }*/
-
-  /* Clear the children list of the exiting thread */
-  /* If child has exited or occured exception, remove it */
-  /* But if child thread has not exited, block parent thread */
-  /*while(!list_empty(&(cur->children_t_list))){
-    for(struct list_elem* iter = list_begin(&(cur->children_t_list));
-                          iter != list_end(&(cur->children_t_list));
-                          iter = list_next(iter)){
-      struct thread* t = list_entry(iter, struct thread, childelem);
-      if(t->exit_code != -1){
-        t->parent_t = NULL;
-        list_remove(iter);
-      }
-    }*/
-
-    /* If this thread has child not exited, block this thread to wait */
-    /* I think may be we can awake this thread in its parent's process_wait()*/
-    /*intr_disable();
-    thread_block();
-    intr_enable();
-  }*/
-
-  /* After unblocking, this thread has no child not finished yet, and
-      we do the following operations */
-
-  /* Close the file run by the thread */
-  /*file_close(cur->file_running);
-  cur->file_running = NULL;*/
-
-  /* Remove this thread from its parent's children list */
-  /*if(cur->parent_t != NULL){
-    list_remove(&(cur->childelem));
-  }*/
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
