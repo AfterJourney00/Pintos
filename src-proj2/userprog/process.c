@@ -126,14 +126,10 @@ start_process (void *file_name_)
     free(argv);
     thread_current()->waited = -1;      /* load fail: set waited to -1 */
     thread_current()->exit_code = -1;
-    palloc_free_page (file_name);
-    thread_exit ();
+    //thread_exit ();
+    exit(-1);
   }
-
-  /* If load failed, quit. */
-  /*palloc_free_page (file_name);
-  if (!success) 
-    thread_exit ();*/
+  palloc_free_page (pg_round_down(file_name));
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -168,7 +164,7 @@ process_wait (tid_t child_tid)
     }
     else{
       lock_acquire(&(target_thread->loading_lock));
-      
+
       if(target_thread->status != THREAD_DYING){
         cond_wait(&(target_thread->loading_cond), &(target_thread->loading_lock));
       }
@@ -194,7 +190,7 @@ process_exit (void)
   }
   
   /* Close those files opened by this thread */ 
-  /*clear_files(cur);*/
+  // clear_files(cur);
 
   /* Reset the parent_t to NULL */
   cur->parent_t = NULL;

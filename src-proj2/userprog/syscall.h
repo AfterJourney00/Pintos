@@ -8,7 +8,7 @@ void syscall_init (void);
 
 void halt(void);
 void exit(int status);
-pid_t exec(const char* cmd_line);
+pid_t exec(char* cmd_line);
 int wait(pid_t pid);
 int create(const char* file, unsigned initial_size);
 int remove(const char* file);

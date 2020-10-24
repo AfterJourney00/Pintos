@@ -95,7 +95,6 @@ clear_files(struct thread* t)
       printf("hereee12w\n");
     }
   }
-
   return;
 }
 
@@ -107,18 +106,18 @@ syscall_handler (struct intr_frame *f)
   /* if the interrupt stack is not in range of user address space */
   /* exit(-1) */
   if(bad_ptr(f->esp) || bad_ptr((int*)(f->esp) + 1)
-                     || bad_ptr((int*)(f->esp + 2))
-                     || bad_ptr((int*)(f->esp + 3))){
+                     || bad_ptr((int*)(f->esp) + 2)
+                     || bad_ptr((int*)(f->esp) + 3)){
     exit(-1);
   }
-
+  
   /* if the interrupt code is incalid */
   /* exit(-1) */
   int intr_code = *(int*)(f->esp);
   if(intr_code < SYS_HALT || intr_code > SYS_INUMBER){
     exit(-1);
   }
-
+  
   /* choose the corret syscall handler to handle interrupts */
   switch(intr_code){
     case SYS_HALT:
@@ -138,7 +137,7 @@ syscall_handler (struct intr_frame *f)
     case SYS_EXEC:
     {
       /* parse the arguments first */
-      const char* cmd = (const char*)*((int*)(f->esp) + 1);
+      char* cmd = (char*)*((int*)(f->esp) + 1);
       f->eax = exec(cmd);
       break;
     }
@@ -237,12 +236,19 @@ exit(int status)
 
 /* syscall: EXEC */
 pid_t
-exec(const char* cmd_line)
+exec(char* cmd_line)
 {
+  /* Find the end of the cmd_line, check the whole cmd valid or not */
+  // char* tail_of_cmd_line;
+  // for(tail_of_cmd_line = cmd_line; tail_of_cmd_line != '\0'; tail_of_cmd_line++){
+  //   printf("%c\n", *tail_of_cmd_line);
+  //   continue;
+  // }
   /* First, check the pointer is valid or not */
-  if(bad_ptr(cmd_line)){
+  if(bad_ptr(cmd_line) || bad_ptr(cmd_line + strlen(cmd_line))){
     exit(-1);
   }
+  
   return process_execute(cmd_line);
 }
 
