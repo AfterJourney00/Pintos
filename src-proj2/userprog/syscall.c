@@ -203,6 +203,14 @@ syscall_handler (struct intr_frame *f)
       break;
     }
 
+    case SYS_SEEK:
+    {
+      int fd = *((int*)(f->esp) + 1);
+      unsigned position = *((unsigned*)(f->esp) + 2);
+      seek(fd, position);
+      break;
+    }
+
     case SYS_CLOSE:
     {
       /* parse the arguments first */
@@ -238,12 +246,6 @@ exit(int status)
 pid_t
 exec(char* cmd_line)
 {
-  /* Find the end of the cmd_line, check the whole cmd valid or not */
-  // char* tail_of_cmd_line;
-  // for(tail_of_cmd_line = cmd_line; tail_of_cmd_line != '\0'; tail_of_cmd_line++){
-  //   printf("%c\n", *tail_of_cmd_line);
-  //   continue;
-  // }
   /* First, check the pointer is valid or not */
   if(bad_ptr(cmd_line) || bad_ptr(cmd_line + strlen(cmd_line))){
     exit(-1);
@@ -415,30 +417,70 @@ write(int fd, const void *buffer, unsigned size)
   return res;
 }
 
+/* syscall: SEEK */
+void
+seek(int fd, unsigned position)
+{
+  lock_acquire(&file_lock);
+
+  struct file_des* f = find_des_by_fd(fd);
+  if(f == NULL){
+    goto done;
+  }
+  else{
+    if(f->file_ptr == NULL){
+      goto done;
+    }
+    else{
+      file_seek (f->file_ptr, position);
+    }
+  }
+
+done:
+  lock_release(&file_lock);
+  return;
+}
+
+/* syscall: TELL */
+unsigned tell(int fd)
+{
+  unsigned res;
+  lock_acquire(&file_lock);
+
+  struct file_des* f = find_des_by_fd(fd);
+  if(f == NULL){
+    res = 0;
+    goto done;
+  }
+  else{
+    if(f->file_ptr == NULL){
+      res = 0;
+      goto done;
+    }
+    else{
+      res = file_tell(f->file_ptr);
+    }
+  }
+
+done:
+  lock_release(&file_lock);
+  return res;
+}
+
+/* syscall: CLOSE */
 void
 close(int fd)
 {
+  lock_acquire(&file_lock);
+
   struct file_des *f = find_des_by_fd(fd);
   if(f == NULL || f->opener != thread_current()){
-    return;
+    goto done;
   }
-  else{
-    lock_acquire(&file_lock);
+  list_remove(&(f->filelem));
+  free(f);
 
-    list_remove(&(f->filelem));
-    free(f);
-    /*for(struct list_elem* iter = list_begin(&file_list);
-                          iter != list_end(&file_list);
-                          iter = list_next(iter)){
-      struct file_des * temp = list_entry(iter, struct file_des, filelem);
-      if(temp->fd = fd){
-        list_remove(iter);
-        file_close(temp->file_ptr);
-        free(f);
-        break;
-      }
-    }*/
-    lock_release(&file_lock);
-    return;
-  }
+done:
+  lock_release(&file_lock);
+  return;
 }

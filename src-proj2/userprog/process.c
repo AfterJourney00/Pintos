@@ -110,7 +110,7 @@ start_process (void *file_name_)
 
   if(success){
     /* Set the file of the thread to the file loaded */ 
-    //thread_current()->file_running = filesys_open(argv[0]);
+    // thread_current()->file_running = filesys_open(argv[0]);
 
     /* Deny write */
     //file_deny_write(thread_current()->file_running);
@@ -189,6 +189,9 @@ process_exit (void)
     list_remove(iter);
   }
   
+  // if (cur->file_running != NULL)
+  //   file_allow_write (cur->file_running);
+
   /* Close those files opened by this thread */ 
   // clear_files(cur);
 
