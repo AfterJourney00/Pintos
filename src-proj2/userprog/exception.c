@@ -150,7 +150,20 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   if(bad_ptr(fault_addr)){
-     exit(-1);
+   // printf ("Page fault at %p: %s error %s page in %s context.\n",
+   //        fault_addr,
+   //        not_present ? "not present" : "rights violation",
+   //        write ? "writing" : "reading",
+   //        user ? "user" : "kernel");
+
+
+   struct thread *cur = thread_current();
+   cur->exit_code = -1;
+   enum intr_level old_level = intr_disable();
+   printf ("%s: exit(%d)\n", cur->name, -1);
+   intr_set_level (old_level);
+  
+   thread_exit();
   }
 
   /* To implement virtual memory, delete the rest of the function

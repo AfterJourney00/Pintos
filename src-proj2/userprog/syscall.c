@@ -75,26 +75,18 @@ void
 clear_files(struct thread* t)
 {
   ASSERT(t == thread_current());
-
+  
   for(struct list_elem* iter = list_begin(&file_list);
                         iter != list_end(&file_list);
                         iter = list_next(iter)){
     struct file_des* fdes = list_entry(iter, struct file_des, filelem);
-    printf("hereee\n");
-    printf("fdes->opener: %p\n", fdes->opener);
     if(fdes->opener == t){
-      printf("hereee11\n");
       list_remove(iter);
-      printf("hereee12\n");
       file_close(fdes->file_ptr);
-      printf("hereee13\n");
       free(fdes);
-      printf("hereee14\n");
-    }
-    else{
-      printf("hereee12w\n");
     }
   }
+
   return;
 }
 
@@ -146,6 +138,7 @@ syscall_handler (struct intr_frame *f)
     {
       /* parse the arguments first */
       pid_t pid = *((pid_t*)(f->esp) + 1);
+      
       f->eax = wait(pid);
       break;
     }
@@ -235,9 +228,9 @@ exit(int status)
   struct thread *cur = thread_current();
   cur->exit_code = status;
 
-  intr_disable();
+  enum intr_level old_level = intr_disable();
   printf ("%s: exit(%d)\n", cur->name, status);
-  intr_enable();
+  intr_set_level (old_level);
   thread_exit();
   return;
 }
@@ -258,6 +251,7 @@ exec(char* cmd_line)
 int
 wait(pid_t pid)
 {
+  //printf("tid: %d, name: %s\n", thread_current()->tid, thread_current()->name);
   return process_wait(pid);
 }
 
@@ -310,7 +304,6 @@ open(const char* file)
 
   /* If open successfully */
   if(file_opened != NULL){
-    thread_current()->file_running = file;
     des = (struct file_des*)malloc(sizeof(struct file_des));
     des->file_ptr = file_opened;
     des->fd = ++global_fd;                       /* Set the fd */
@@ -478,6 +471,7 @@ close(int fd)
     goto done;
   }
   list_remove(&(f->filelem));
+  file_close(f->file_ptr);
   free(f);
 
 done:

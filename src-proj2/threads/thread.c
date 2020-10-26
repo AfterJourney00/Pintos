@@ -320,17 +320,22 @@ void
 thread_exit (void) 
 {
   ASSERT (!intr_context ());
-  
+  struct thread* cur = thread_current();
 #ifdef USERPROG
   process_exit ();
+  intr_disable ();
+  goto done;
 #endif
   
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
   intr_disable ();
-  list_remove (&thread_current()->allelem);
-  thread_current()->status = THREAD_DYING;
+  list_remove (&cur->allelem);
+
+done:
+  cur->parent_t = NULL;        /* Reset the parent_t to NULL */
+  cur->status = THREAD_DYING;
   schedule ();
   NOT_REACHED ();
 }
@@ -482,6 +487,9 @@ running_thread (void)
 static bool
 is_thread (struct thread *t)
 {
+  // if(t->magic != THREAD_MAGIC){
+  //   printf("NULL\n");
+  // }
   return t != NULL && t->magic == THREAD_MAGIC;
 }
 
@@ -509,12 +517,14 @@ init_thread (struct thread *t, const char *name, int priority)
   t->pagedir = NULL;                  /* Initialize the pagedir to NULL */
   t->parent_t = NULL;                 /* The running thread is the parent thread */
   list_init(&(t->children_t_list));
+  list_init(&(t->running_file_list));
   t->file_running = NULL;
-  t->isloaded = false;                /* By default, not loaded */
+  t->isloaded = 0;                    /* By default, not loaded */
   t->waited = 0;                      /* By default, not waited */
   lock_init(&(t->loading_lock));      /* Initialize the loading lock */
   cond_init(&(t->loading_cond));      /* Initialize the loading cond */
-  t->exit_code = 0;                   /* By default, the exit_code is -1 */   
+  t->exited = false;                  /* By default, the thread is not exited */
+  t->exit_code = 0;                   /* By default, the exit_code is 0 */   
 #endif
 
   old_level = intr_disable ();

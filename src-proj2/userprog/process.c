@@ -34,6 +34,7 @@ process_execute (const char *file_name)
   char* fn_for_parse;
   tid_t tid;
   char *exec_name = NULL, *save_ptr = NULL;    /* For parsing. */
+  struct thread* cur = thread_current ();
   
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
@@ -66,13 +67,18 @@ process_execute (const char *file_name)
   if(t == NULL){
     return TID_ERROR;
   }
-  
+
   /* Synchronization: use condition variable to wait child thread */
-  lock_acquire(&(t->loading_lock));
-  if(!t->isloaded){
-    cond_wait(&(t->loading_cond), &(t->loading_lock));
+  lock_acquire(&(cur->loading_lock));
+  while(!t->isloaded){
+    cond_wait(&(cur->loading_cond), &(cur->loading_lock));
   }
-  lock_release(&(t->loading_lock));
+  lock_release(&(cur->loading_lock));
+  //printf("**tid is: %d\n", t->tid);
+  if(t->isloaded != 1){
+    return -1;
+  }
+  
   return tid;
 }
 
@@ -84,6 +90,7 @@ start_process (void *file_name_)
   char *file_name = file_name_;
   struct intr_frame if_;
   bool success;
+  struct thread* cur = thread_current();
 
   /*** Our definition ***/
   char *save_ptr;
@@ -107,7 +114,7 @@ start_process (void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (argv, &if_.eip, &if_.esp, argc);
-
+  
   if(success){
     /* Set the file of the thread to the file loaded */ 
     // thread_current()->file_running = filesys_open(argv[0]);
@@ -116,7 +123,7 @@ start_process (void *file_name_)
     //file_deny_write(thread_current()->file_running);
 
     /* The thread has been loaded and set successfully */
-    thread_current()->isloaded = true;
+    cur->isloaded = 1;
 
     /* free the memory allocated by malloc before */
     free(argv);
@@ -124,11 +131,20 @@ start_process (void *file_name_)
   else{
     /* free the memory allocated by malloc before */
     free(argv);
-    thread_current()->waited = -1;      /* load fail: set waited to -1 */
-    thread_current()->exit_code = -1;
-    //thread_exit ();
-    exit(-1);
+    cur->isloaded = -1;    /* load fail: set isloaded to -1 */ 
   }
+
+  /* Synchronization: loading finished, broadcast the condition variable */
+  lock_acquire(&(cur->parent_t->loading_lock));
+  cond_broadcast(&(cur->parent_t->loading_cond), &(cur->parent_t->loading_lock));
+  lock_release(&(cur->parent_t->loading_lock));
+
+  if (!success){
+    cur->waited = -1;      /* load fail: set waited to -1 */
+    cur->exit_code = -1;   /* load fail: set exit_code to -1 */
+    thread_exit ();
+  }
+
   palloc_free_page (pg_round_down(file_name));
 
   /* Start the user process by simulating a return from an
@@ -153,24 +169,43 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid) 
 {
+  struct thread* cur = thread_current();
+
   if(child_tid == TID_ERROR){
     return -1;
   }
   else{
-    struct thread* target_thread = find_thread_by_tid(child_tid);
-    if(target_thread == NULL || target_thread->parent_t != thread_current()
-                             || target_thread->waited != 0){
+    struct thread* target_thread = NULL;
+  
+    for(struct list_elem* iter = list_begin(&cur->children_t_list);
+                          iter != list_end(&cur->children_t_list);
+                          iter = list_next(iter)){
+      struct thread* t = list_entry(iter, struct thread, childelem);
+      //printf("address: %p\n", t);
+      //printf("no exception: %d\n", t->tid);
+      if(t->tid == child_tid){
+        target_thread = t;
+        break;
+      }
+    }
+    
+    if(target_thread == NULL){
       return -1;
     }
     else{
-      lock_acquire(&(target_thread->loading_lock));
-
-      if(target_thread->status != THREAD_DYING){
-        cond_wait(&(target_thread->loading_cond), &(target_thread->loading_lock));
+      if(target_thread->waited != 0 || target_thread->status == THREAD_DYING){
+        return -1;
       }
-      
-      lock_release(&(target_thread->loading_lock));
-      return target_thread->exit_code;
+      else{
+        //printf("here, waited: %d\n", target_thread->waited);
+        lock_acquire(&(cur->loading_lock));
+        while(find_thread_by_tid(child_tid) != NULL){
+          cond_wait(&(cur->loading_cond), &(cur->loading_lock));
+        }
+        lock_release(&(cur->loading_lock));
+        target_thread->waited = 1;
+        return target_thread->exit_code;
+      }
     }
   }
 }
@@ -186,21 +221,23 @@ process_exit (void)
   for(struct list_elem* iter = list_begin(&(cur->children_t_list));
                         iter != list_end(&(cur->children_t_list));
                         iter = list_next(iter)){
+    struct thread * t = list_entry(iter, struct thread, childelem);
     list_remove(iter);
+  }  
+
+  /* Close those files opened by this thread */   /* Not finish yet */
+  if (cur->file_running != NULL){
+    file_allow_write(cur->file_running);
+    file_close(cur->file_running);
   }
-  
-  // if (cur->file_running != NULL)
-  //   file_allow_write (cur->file_running);
 
-  /* Close those files opened by this thread */ 
-  // clear_files(cur);
-
-  /* Reset the parent_t to NULL */
-  cur->parent_t = NULL;
-
-  lock_acquire(&(cur->loading_lock));
-  cond_broadcast(&(cur->loading_cond), &(cur->loading_lock));
-  lock_release(&(cur->loading_lock));
+  if(cur->parent_t != NULL){
+    list_remove(&cur->childelem);
+    lock_acquire(&(cur->parent_t->loading_lock));
+    list_remove (&cur->allelem);
+    cond_broadcast(&(cur->parent_t->loading_cond), &(cur->parent_t->loading_lock));
+    lock_release(&(cur->parent_t->loading_lock));
+  }
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -331,8 +368,15 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name[0]);
+      file_close (file);
       goto done; 
     }
+  
+  /* Set the file to current thread's running file */
+  t->file_running = file;
+
+  /* Deny writes to executable */
+  file_deny_write (file);
 
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
@@ -415,14 +459,8 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
 
   success = true;
 
-  /* Synchronization: loading finished, broadcast the condition variable */
-  lock_acquire(&(t->loading_lock));
-  cond_broadcast(&(t->loading_cond), &(t->loading_lock));
-  lock_release(&(t->loading_lock));
-
 done:
   /* We arrive here whether the load is successful or not. */
-  file_close (file);
   return success;
 }
 
