@@ -228,6 +228,15 @@ exit(int status)
   struct thread *cur = thread_current();
   cur->exit_code = status;
 
+  /* Construct a exit_code_element */
+  if(cur->parent_t != NULL){
+    struct exit_code_list_element* exit_element = malloc(sizeof(struct exit_code_list_element));
+    exit_element->thread_tid = cur->tid;
+    exit_element->thread_exit_code = status;
+    list_push_back(&(cur->parent_t->children_exit_code_list), &(exit_element->elem));
+  }
+  /**********************************/
+  
   enum intr_level old_level = intr_disable();
   printf ("%s: exit(%d)\n", cur->name, status);
   intr_set_level (old_level);

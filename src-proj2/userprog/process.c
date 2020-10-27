@@ -74,7 +74,6 @@ process_execute (const char *file_name)
     cond_wait(&(cur->loading_cond), &(cur->loading_lock));
   }
   lock_release(&(cur->loading_lock));
-  //printf("**tid is: %d\n", t->tid);
   if(t->isloaded != 1){
     return -1;
   }
@@ -176,13 +175,10 @@ process_wait (tid_t child_tid)
   }
   else{
     struct thread* target_thread = NULL;
-  
     for(struct list_elem* iter = list_begin(&cur->children_t_list);
                           iter != list_end(&cur->children_t_list);
                           iter = list_next(iter)){
       struct thread* t = list_entry(iter, struct thread, childelem);
-      //printf("address: %p\n", t);
-      //printf("no exception: %d\n", t->tid);
       if(t->tid == child_tid){
         target_thread = t;
         break;
@@ -193,18 +189,45 @@ process_wait (tid_t child_tid)
       return -1;
     }
     else{
+      // if(target_thread->waited != 0 || target_thread->status == THREAD_DYING){
+      //   return -1;
+      // }
       if(target_thread->waited != 0 || target_thread->status == THREAD_DYING){
         return -1;
       }
       else{
-        //printf("here, waited: %d\n", target_thread->waited);
+        target_thread->waited = 1;
+        
+        //printf("1thread now has address: %p, has exit_code: %d\n", target_thread, target_thread->exit_code);
         lock_acquire(&(cur->loading_lock));
         while(find_thread_by_tid(child_tid) != NULL){
+          //printf("waiting for thread%d, name is %s, address is %p\n", target_thread->tid, target_thread->name, target_thread);
           cond_wait(&(cur->loading_cond), &(cur->loading_lock));
         }
+        //printf("waiting for thread%d has finished, name is %s, address is %p\n", target_thread->tid, target_thread->name, target_thread);
         lock_release(&(cur->loading_lock));
-        target_thread->waited = 1;
-        return target_thread->exit_code;
+        //printf("thread_address: %p\n", find_thread_by_tid(child_tid));
+        //printf("thread id: %d\n", target_thread->tid);
+        //printf("2thread now has address: %p, has exit_code: %d\n", target_thread, target_thread->exit_code);
+        
+        struct exit_code_list_element* return_exit_element = NULL;
+        for(struct list_elem* iter = list_begin(&(cur->children_exit_code_list));
+                              iter != list_end(&(cur->children_exit_code_list));
+                              iter = list_next(iter)){
+          struct exit_code_list_element* ece = list_entry(iter,
+                                                          struct exit_code_list_element, elem);
+          if(ece->thread_tid == child_tid){
+            return_exit_element = ece;
+            list_remove(iter);
+          }
+        }
+        int exit_status = -1;
+        if(return_exit_element != NULL){
+          exit_status = return_exit_element->thread_exit_code;
+        }
+        free(return_exit_element);
+        // printf("return value = %d\n", exit_status);
+        return exit_status;
       }
     }
   }
@@ -214,6 +237,8 @@ process_wait (tid_t child_tid)
 void
 process_exit (void)
 {
+  // intr_disable();
+  // thread_block();
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
@@ -232,13 +257,13 @@ process_exit (void)
   }
 
   if(cur->parent_t != NULL){
-    list_remove(&cur->childelem);
+    list_remove(&cur->childelem);       /* remove current thread from its parent's children list */
     lock_acquire(&(cur->parent_t->loading_lock));
-    list_remove (&cur->allelem);
+    list_remove (&cur->allelem);        /* remove current thread from all_list */
     cond_broadcast(&(cur->parent_t->loading_cond), &(cur->parent_t->loading_lock));
     lock_release(&(cur->parent_t->loading_lock));
   }
-
+  //printf("before destroying page, tid is: %d, address at: %p\n", cur->tid, cur);
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -255,6 +280,7 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
+  //printf("after destroying page, tid is: %d, address at: %p\n", cur->tid, cur);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -598,9 +624,7 @@ setup_stack (void **esp, char **argv, int argc)
         for (int i = argc - 1; i >= 0; i--)
         {
           /* Allocate space for the command line. */
-          /*printf("%s\n", argv[i]);*/
           *esp = *esp - (strlen (argv[i]) + 1);
-          /*printf("%p\n", *esp);*/
           memcpy (*esp, argv[i], (strlen (argv[i]) + 1));
           argv_ptr[i] = *(char**)esp;
         }
