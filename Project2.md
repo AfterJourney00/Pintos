@@ -16,21 +16,45 @@
 
 #### A1: Copy here the declaration of each new or changed `struct` or `struct` member, global or static variable, `typedef`, or enumeration.  Identify the purpose of each in 25 words or less.
 
+***Answer:***
+
+- 
+
 ### Algorithms
 
 #### A2: Briefly describe how you implemented argument parsing.  How do you arrange for the elements of `argv[]` to be in the right order? How do you avoid overflowing the stack page?
+
+***Answer:***
+
+- Briefly describe how you implemented argument parsing.
+  Firstly, in `process_execute()`, we added a step of `strtok_r()` to parse the `file_name` and get the first word of the command line, which is the stuff we need to run. Next, in `start_process()`, we split the `file_name` to get different arguments in the command line. We passed the arguments in the form of `char *argv[]` and also the count of arguments to the `load()` function for further operation with the stack. In `load()`, the `argv[]` and `argc` are passed to `setup_stack()` to setup the stack. In `setup_stack()`, we pushed the arguments, zeros to help with word-align, addresses of the arguments, count of arguments and the return address to the stack in order to setup the stack.
+
+- How do you arrange for the elements of `argv[]` to be in the right order?
+  Actually, during our implementation we did not worried a lot about this problem, as in the process of parsing the order is handled by the original command line. When we are setting up the stack, the biggest concern is to change the order when pushing arguments to the stack. 
+- How do you avoid overflowing the stack page?
+  We handed it over to the page fault exception. This method is more efficient than any other ways considering to check the overflowing problem in the process  of setting up the stack.
 
 ### Rationale
 
 #### A3: Why does Pintos implement `strtok_r()` but not `strtok()`?
 
+***Answer:***
+
+The Pintos kernel separates command line into executable name and arguments. So we need to make the address of arguments reachable after calling the splitting function. The `strtok_r()` function asks for a placeholder from the caller, which makes it more stable when it comes to splitting the command line.
+
 #### A4: In Pintos, the kernel separates commands into a executable name and arguments. In Unix-like systems, the shell does this separation.  Identify at least two advantages of the Unix approach.
+
+***Answer:***
+
+1. Shorter time in kernel, more efficient.
+2. Checking commands before kernel to prevent kernel from failing.
+3. Shell would be able to pre-process the command, like a interpreter to make it more efficient. 
 
 ## Part2: System Calls
 
 ### Data Structures
 
-#### B1: Copy here the declaration of each new or changed `struct' or `struct' member, global or static variable, `typedef', or enumeration.  Identify the purpose of each in 25 words or less.
+#### B1: Copy here the declaration of each new or changed `struct` or `struct` member, global or static variable, `typedef`, or enumeration.  Identify the purpose of each in 25 words or less.
 
 #### B2: Describe how file descriptors are associated with open files. Are file descriptors unique within the entire OS or just within a single process?
 
@@ -56,7 +80,7 @@
 
 #### B10: What advantages or disadvantages can you see to your design for file descriptors?
 
-#### B11: The default tid_t to pid_t mapping is the identity mapping. If you changed it, what advantages are there to your approach?
+#### B11: The default `tid_t` to `pid_t` mapping is the identity mapping. If you changed it, what advantages are there to your approach?
 
 ## Survey Questions
 
