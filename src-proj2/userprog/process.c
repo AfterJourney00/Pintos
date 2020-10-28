@@ -74,10 +74,21 @@ process_execute (const char *file_name)
     cond_wait(&(cur->loading_cond), &(cur->loading_lock));
   }
   lock_release(&(cur->loading_lock));
+  
+  /* Check if the child thread has exited already, if yes, retrieve it */
+  for(struct list_elem* iter = list_begin(&cur->children_exit_code_list);
+                        iter != list_end(&cur->children_exit_code_list);
+                        iter = list_next(iter)){
+    struct exit_code_list_element* ece = list_entry(iter, struct exit_code_list_element, elem);
+    if(ece->thread_tid == tid){
+      return tid;
+    }
+  }
+
   if(t->isloaded != 1){
     return -1;
   }
-  
+
   return tid;
 }
 
@@ -174,6 +185,20 @@ process_wait (tid_t child_tid)
     return -1;
   }
   else{
+    /* Check the child thread is exited or not, if yes, return its exit code directly */
+    for(struct list_elem* iter = list_begin(&cur->children_exit_code_list);
+                          iter != list_end(&cur->children_exit_code_list);
+                          iter = list_next(iter)){
+      struct exit_code_list_element* ece = list_entry(iter, struct exit_code_list_element, elem);
+      if(ece->thread_tid == child_tid){
+        list_remove(iter);
+        int return_code = ece->thread_exit_code;
+        free(ece);
+        return return_code;
+      }
+    }
+
+    /* If child thread is not exited yet, try to wait it */
     struct thread* target_thread = NULL;
     for(struct list_elem* iter = list_begin(&cur->children_t_list);
                           iter != list_end(&cur->children_t_list);
@@ -189,26 +214,17 @@ process_wait (tid_t child_tid)
       return -1;
     }
     else{
-      // if(target_thread->waited != 0 || target_thread->status == THREAD_DYING){
-      //   return -1;
-      // }
       if(target_thread->waited != 0 || target_thread->status == THREAD_DYING){
         return -1;
       }
       else{
         target_thread->waited = 1;
         
-        //printf("1thread now has address: %p, has exit_code: %d\n", target_thread, target_thread->exit_code);
         lock_acquire(&(cur->loading_lock));
         while(find_thread_by_tid(child_tid) != NULL){
-          //printf("waiting for thread%d, name is %s, address is %p\n", target_thread->tid, target_thread->name, target_thread);
           cond_wait(&(cur->loading_cond), &(cur->loading_lock));
         }
-        //printf("waiting for thread%d has finished, name is %s, address is %p\n", target_thread->tid, target_thread->name, target_thread);
         lock_release(&(cur->loading_lock));
-        //printf("thread_address: %p\n", find_thread_by_tid(child_tid));
-        //printf("thread id: %d\n", target_thread->tid);
-        //printf("2thread now has address: %p, has exit_code: %d\n", target_thread, target_thread->exit_code);
         
         struct exit_code_list_element* return_exit_element = NULL;
         for(struct list_elem* iter = list_begin(&(cur->children_exit_code_list));
@@ -226,7 +242,6 @@ process_wait (tid_t child_tid)
           exit_status = return_exit_element->thread_exit_code;
         }
         free(return_exit_element);
-        // printf("return value = %d\n", exit_status);
         return exit_status;
       }
     }
