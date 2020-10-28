@@ -298,7 +298,6 @@ struct thread *
 thread_current (void) 
 {
   struct thread *t = running_thread ();
-  
   /* Make sure T is really a thread.
      If either of these assertions fire, then your thread may
      have overflowed its stack.  Each thread has less than 4 kB
@@ -515,7 +514,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->pagedir = NULL;                  /* Initialize the pagedir to NULL */
   t->parent_t = NULL;                 /* The running thread is the parent thread */
   list_init(&(t->children_t_list));
-  list_init(&(t->running_file_list));
+  //list_init(&(t->running_file_list));
   t->file_running = NULL;
   
   lock_init(&(t->loading_lock));      /* Initialize the loading lock */

@@ -16,15 +16,6 @@
 
 typedef int pid_t;
 
-struct file_des
-{
-  int fd;
-  int size;
-  struct file *file_ptr;
-  struct thread* opener;
-  struct list_elem filelem;
-};
-
 struct lock file_lock;
 static int global_fd = 1;
 struct list file_list;
@@ -74,19 +65,17 @@ find_des_by_fd(int fd)
 void
 clear_files(struct thread* t)
 {
-  ASSERT(t == thread_current());
-  
-  for(struct list_elem* iter = list_begin(&file_list);
-                        iter != list_end(&file_list);
-                        iter = list_next(iter)){
+  struct list_elem* iter = list_begin(&file_list);
+  while(iter != list_end(&file_list)){
+    struct list_elem* next_iter = list_next(iter);
     struct file_des* fdes = list_entry(iter, struct file_des, filelem);
     if(fdes->opener == t){
       list_remove(iter);
       file_close(fdes->file_ptr);
       free(fdes);
     }
+    iter = next_iter;
   }
-
   return;
 }
 
@@ -317,8 +306,10 @@ open(const char* file)
     des->file_ptr = file_opened;
     des->fd = ++global_fd;                       /* Set the fd */
     des->size = file_length(file_opened);        /* Set the size of file */
+    //des->open_tid = thread_current()->tid;
     des->opener = thread_current();              /* Set the opener thread */
     list_push_back(&file_list, &(des->filelem)); /* Push this descriptor into list */
+    //list_push_back(&thread_current()->running_file_list, &des->telem);
 
     lock_release(&file_lock);
 

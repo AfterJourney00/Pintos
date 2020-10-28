@@ -43,20 +43,26 @@ process_execute (const char *file_name)
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
-  if (fn_for_parse == NULL)
+  if (fn_for_parse == NULL){
+    palloc_free_page (fn_copy);
     return TID_ERROR;
+  }
   strlcpy (fn_for_parse, file_name, PGSIZE);
-  
+
   /* Parse file_name to have exec_name. */
   /* For example: 'args-single onearg' ===> 'args-single' & 'onearg' */
   exec_name = strtok_r(fn_for_parse, " ", &save_ptr);
-  
+
   /* If the input is not a valid file_name */
-  if (exec_name == NULL)
+  if (exec_name == NULL){
+    palloc_free_page (fn_copy);
+    palloc_free_page(fn_for_parse);
     return TID_ERROR;
-  
+  }
+
   /* Create a new thread named FILE_NAME, run function start_process with paras save_ptr */
   tid = thread_create (exec_name, PRI_DEFAULT, start_process, fn_copy);
+  palloc_free_page(fn_for_parse);
   if(tid == TID_ERROR){
     palloc_free_page (fn_copy);
     return tid;
@@ -65,6 +71,7 @@ process_execute (const char *file_name)
   /* Find the pointer pointing to the child thread */
   struct thread* t = find_thread_by_tid(tid);
   if(t == NULL){
+    palloc_free_page (fn_copy);
     return TID_ERROR;
   }
 
@@ -125,29 +132,23 @@ start_process (void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (argv, &if_.eip, &if_.esp, argc);
   
+  /* free the memory allocated by malloc before */
+  free(argv);
+
   if(success){
-    /* Set the file of the thread to the file loaded */ 
-    // thread_current()->file_running = filesys_open(argv[0]);
-
-    /* Deny write */
-    //file_deny_write(thread_current()->file_running);
-
     /* The thread has been loaded and set successfully */
     cur->isloaded = 1;
-
-    /* free the memory allocated by malloc before */
-    free(argv);
   }
   else{
-    /* free the memory allocated by malloc before */
-    free(argv);
     cur->isloaded = -1;    /* load fail: set isloaded to -1 */ 
   }
 
-  /* Synchronization: loading finished, broadcast the condition variable */
-  lock_acquire(&(cur->parent_t->loading_lock));
-  cond_broadcast(&(cur->parent_t->loading_cond), &(cur->parent_t->loading_lock));
-  lock_release(&(cur->parent_t->loading_lock));
+  if(cur->parent_t != NULL){
+    /* Synchronization: loading finished, broadcast the condition variable */
+    lock_acquire(&(cur->parent_t->loading_lock));
+    cond_broadcast(&(cur->parent_t->loading_cond), &(cur->parent_t->loading_lock));
+    lock_release(&(cur->parent_t->loading_lock));
+  }
 
   if (!success){
     cur->waited = -1;      /* load fail: set waited to -1 */
@@ -156,6 +157,7 @@ start_process (void *file_name_)
   }
 
   palloc_free_page (pg_round_down(file_name));
+  //palloc_free_page (file_name);
 
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -235,13 +237,14 @@ process_wait (tid_t child_tid)
           if(ece->thread_tid == child_tid){
             return_exit_element = ece;
             list_remove(iter);
+            break;
           }
         }
         int exit_status = -1;
         if(return_exit_element != NULL){
           exit_status = return_exit_element->thread_exit_code;
+          free(return_exit_element);
         }
-        free(return_exit_element);
         return exit_status;
       }
     }
@@ -252,8 +255,6 @@ process_wait (tid_t child_tid)
 void
 process_exit (void)
 {
-  // intr_disable();
-  // thread_block();
   struct thread *cur = thread_current ();
   uint32_t *pd;
 
@@ -265,10 +266,22 @@ process_exit (void)
     list_remove(iter);
   }  
 
+  /* Clear children_exit_code_list */
+  for(struct list_elem* iter = list_begin(&(cur->children_exit_code_list));
+                        iter != list_end(&(cur->children_exit_code_list));
+                        iter = list_next(iter)){
+    struct exit_code_list_element * ece = list_entry(iter,
+                                                     struct exit_code_list_element,
+                                                     elem);
+    list_remove(iter);
+    free(ece);
+  }
+
   /* Close those files opened by this thread */   /* Not finish yet */
   if (cur->file_running != NULL){
     file_allow_write(cur->file_running);
-    file_close(cur->file_running);
+    //file_close(cur->file_running);
+    cur->file_running = NULL;
   }
 
   if(cur->parent_t != NULL){
@@ -278,7 +291,7 @@ process_exit (void)
     cond_broadcast(&(cur->parent_t->loading_cond), &(cur->parent_t->loading_lock));
     lock_release(&(cur->parent_t->loading_lock));
   }
-  //printf("before destroying page, tid is: %d, address at: %p\n", cur->tid, cur);
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -295,7 +308,8 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-  //printf("after destroying page, tid is: %d, address at: %p\n", cur->tid, cur);
+    
+  clear_files(cur);
 }
 
 /* Sets up the CPU for running user code in the current

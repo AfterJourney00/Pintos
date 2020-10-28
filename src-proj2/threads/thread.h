@@ -108,7 +108,7 @@ struct thread
     struct list children_t_list;        /* List of children threads */
     struct list_elem childelem;         /* List element for children threads list. */    
     struct file* file_running;          /* The file run by this thread */
-    struct list running_file_list;      /* The list of running files */
+    //struct list running_file_list;      /* The list of running files */
     struct lock loading_lock;           /* lock for parent thread to wait */
     struct condition loading_cond;      /* cond variable for parent thread to wait */
     int isloaded;                       /* The file loaded to the thread or not */

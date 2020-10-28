@@ -4,6 +4,15 @@
 
 typedef int pid_t;
 
+struct file_des
+{
+  int fd;
+  int size;
+  struct file *file_ptr;
+  struct thread* opener;
+  struct list_elem filelem;
+};
+
 void syscall_init (void);
 
 void halt(void);
