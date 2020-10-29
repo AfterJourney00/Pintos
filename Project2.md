@@ -56,6 +56,37 @@ The Pintos kernel separates command line into executable name and arguments. So 
 
 #### B1: Copy here the declaration of each new or changed `struct` or `struct` member, global or static variable, `typedef`, or enumeration.  Identify the purpose of each in 25 words or less.
 
+***Answer:***
+
+These are for struct `thread`:
+
+```C
+struct thread* parent_t;             /* Record this thread's parent */
+struct list children_t_list;         /* List of children threads */
+struct list_elem childelem;          /* List element for children threads list. */    
+struct file* file_running;           /* The file run by this thread */
+struct lock loading_lock;            /* lock for parent thread to wait */
+struct condition loading_cond;       /* cond variable for parent thread to wait */
+int isloaded;                        /* The file loaded to the thread or not */
+int waited;                          /* Record the thread waited, not waited, or terminated */
+bool exited;                         /* Record whether the thread is exited */
+int exit_code;                       /* The exit code returned when the thread exits */
+struct list children_exit_code_list; /* A list used to record children threads' exit code*/
+```
+
+These are for a new struct `file_des` in `syscall.h`, which is a detailed version for file descriptors:
+
+```C
+struct file_des
+{
+  int fd;
+  int size;
+  struct file *file_ptr;
+  struct thread* opener;
+  struct list_elem filelem;
+}
+```
+
 #### B2: Describe how file descriptors are associated with open files. Are file descriptors unique within the entire OS or just within a single process?
 
 ### Algorithms
