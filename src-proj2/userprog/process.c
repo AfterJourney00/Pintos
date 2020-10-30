@@ -39,12 +39,14 @@ process_execute (const char *file_name)
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
-  fn_for_parse = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
   strlcpy (fn_copy, file_name, PGSIZE);
+  
+  /* Make another copy for parsing since FILE_NAME is a const one */
+  fn_for_parse = palloc_get_page (0);
   if (fn_for_parse == NULL){
-    palloc_free_page (fn_copy);
+    palloc_free_page (fn_copy);     /* Free the space allocated before */
     return TID_ERROR;
   }
   strlcpy (fn_for_parse, file_name, PGSIZE);
@@ -55,14 +57,20 @@ process_execute (const char *file_name)
 
   /* If the input is not a valid file_name */
   if (exec_name == NULL){
+    /* Free the space allocated before */
     palloc_free_page (fn_copy);
     palloc_free_page(fn_for_parse);
+
     return TID_ERROR;
   }
 
   /* Create a new thread named FILE_NAME, run function start_process with paras save_ptr */
   tid = thread_create (exec_name, PRI_DEFAULT, start_process, fn_copy);
+  
+  /* Free useless space in time */
   palloc_free_page(fn_for_parse);
+  
+  /* Check thread create successfully or not */
   if(tid == TID_ERROR){
     palloc_free_page (fn_copy);
     return tid;
@@ -92,6 +100,7 @@ process_execute (const char *file_name)
     }
   }
 
+  /* The chile thread is not exited yet, so check load successfully or not */
   if(t->isloaded != 1){
     return -1;
   }
@@ -109,13 +118,10 @@ start_process (void *file_name_)
   bool success;
   struct thread* cur = thread_current();
 
-  /*** Our definition ***/
   char *save_ptr;
-  char **argv = (char**)malloc(128); /* Limit the arguments less than 128 args */
-  //char *argv[25];                  /* The splitted command line here. */
+  char **argv = (char**)malloc(128); /* Limit the arguments less than 128 bytes */
   int argc = 0;                      /* Count of arguments passed in on one command line. */
 
-  /*** Our implementation ***/
   /* argv[0] is the real file name, and remaining are arguments */
   /* argc = 1(real file name) + # of arguments */
   for (char *token = strtok_r ((char *)file_name, " ", &save_ptr);
@@ -135,9 +141,8 @@ start_process (void *file_name_)
   /* free the memory allocated by malloc before */
   free(argv);
 
-  if(success){
-    /* The thread has been loaded and set successfully */
-    cur->isloaded = 1;
+  if(success){              
+    cur->isloaded = 1;     /* load success: set isloaded to 1 */
   }
   else{
     cur->isloaded = -1;    /* load fail: set isloaded to -1 */ 
@@ -182,6 +187,7 @@ process_wait (tid_t child_tid)
 {
   struct thread* cur = thread_current();
 
+  /* Check the child_tid is valid or not */
   if(child_tid == TID_ERROR){
     return -1;
   }
@@ -193,7 +199,7 @@ process_wait (tid_t child_tid)
       struct exit_code_list_element* ece = list_entry(iter, struct exit_code_list_element, elem);
       if(ece->thread_tid == child_tid){
         list_remove(iter);
-        int return_code = ece->thread_exit_code;
+        int return_code = ece->thread_exit_code;      
         free(ece);
         return return_code;
       }
@@ -211,10 +217,12 @@ process_wait (tid_t child_tid)
       }
     }
     
+    /* If not found, current thread is not the parent of the child */
     if(target_thread == NULL){
       return -1;
     }
     else{
+      /* Check the child thread is waited already or not */
       if(target_thread->waited != 0 || target_thread->status == THREAD_DYING){
         return -1;
       }
@@ -227,6 +235,8 @@ process_wait (tid_t child_tid)
         }
         lock_release(&(cur->loading_lock));
         
+
+        /* Check the child thread is exited or not, if yes, return its exit code directly */
         struct exit_code_list_element* return_exit_element = NULL;
         for(struct list_elem* iter = list_begin(&(cur->children_exit_code_list));
                               iter != list_end(&(cur->children_exit_code_list));
@@ -276,10 +286,9 @@ process_exit (void)
     free(ece);
   }
 
-  /* Close those files opened by this thread */   /* Not finish yet */
+  /* Close those files opened by this thread */
   if (cur->file_running != NULL){
     file_allow_write(cur->file_running);
-    //file_close(cur->file_running);
     cur->file_running = NULL;
   }
 
@@ -307,7 +316,8 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
     }
-    
+  
+  /* Clear all files opened by current thread */
   clear_files(cur);
 }
 

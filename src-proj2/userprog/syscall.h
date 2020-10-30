@@ -4,6 +4,7 @@
 
 typedef int pid_t;
 
+/* File descriptor */
 struct file_des
 {
   int fd;                             /* File descriptor number */

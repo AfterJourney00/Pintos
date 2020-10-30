@@ -206,8 +206,10 @@ thread_create (const char *name, int priority,
 
 #ifdef USERPROG
   /* Owned by userprog/process.c. */
+
+  /* The running thread is the parent thread */
   struct thread* parent = thread_current();
-  t->parent_t = parent;               /* The running thread is the parent thread */
+  t->parent_t = parent;               
   
   /* Push the thread created into parent's children threads list */
   list_push_back (&(parent->children_t_list), &(t->childelem));
@@ -273,22 +275,15 @@ find_thread_by_tid(tid_t tid)
                         iter != list_rend(&all_list);
                         iter = list_prev(iter)){
     struct thread *t = list_entry(iter, struct thread, allelem);
-    if(t->magic != THREAD_MAGIC){
-      printf("the problem thread is at address: %p, tid: %d, Overflow\n", t, t->tid);
-    }
+    
     ASSERT (is_thread(t));
+    
     if(t->tid == tid){
       target_thread = t;
       break;
     }
   }
   return target_thread;
-}
-
-void
-remove_thread_from_alllist(struct thread * t)
-{
-  list_remove(&(t->allelem));
 }
 
 /* Returns the running thread.
@@ -513,16 +508,18 @@ init_thread (struct thread *t, const char *name, int priority)
   /* Owned by userprog/process.c. */
   t->pagedir = NULL;                  /* Initialize the pagedir to NULL */
   t->parent_t = NULL;                 /* The running thread is the parent thread */
-  list_init(&(t->children_t_list));
-  //list_init(&(t->running_file_list));
-  t->file_running = NULL;
+
+  list_init(&(t->children_t_list));   /* Initialize children thread list */
+  t->file_running = NULL;             /* Initialize running file of this thread as NULL */
   
   lock_init(&(t->loading_lock));      /* Initialize the loading lock */
   cond_init(&(t->loading_cond));      /* Initialize the loading cond */
-  t->isloaded = 0;                    /* By default, not loaded */
-  t->waited = 0;                      /* By default, not waited */
+  t->isloaded = 0;                    /* By default, not loaded, 0 */
+  t->waited = 0;                      /* By default, not waited, 0 */
   t->exited = false;                  /* By default, the thread is not exited */
   t->exit_code = 0;                   /* By default, the exit_code is 0 */   
+
+  /* Initialize the list of children's exit status */
   list_init(&(t->children_exit_code_list));
 #endif
 

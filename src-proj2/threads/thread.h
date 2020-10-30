@@ -26,10 +26,12 @@ typedef int tid_t;
 #define PRI_MAX 63                      /* Highest priority. */
 
 
+/* NEW STRUCT */
+/* Record a thread's exit status, can be retrieved even after being freed */
 struct exit_code_list_element{
-   tid_t thread_tid;
-   int thread_exit_code;
-   struct list_elem elem;
+   tid_t thread_tid;                    /* The corresponding thread's tid*/
+   int thread_exit_code;                /* The corresponding thread's exit_code*/
+   struct list_elem elem;               /* Element for list */
 };
 
 /* A kernel thread or user process.
@@ -108,7 +110,6 @@ struct thread
     struct list children_t_list;        /* List of children threads */
     struct list_elem childelem;         /* List element for children threads list. */    
     struct file* file_running;          /* The file run by this thread */
-    //struct list running_file_list;      /* The list of running files */
     struct lock loading_lock;           /* lock for parent thread to wait */
     struct condition loading_cond;      /* cond variable for parent thread to wait */
     int isloaded;                       /* The file loaded to the thread or not */
@@ -143,7 +144,6 @@ struct thread *thread_current (void);
 tid_t thread_tid (void);
 const char *thread_name (void);
 struct thread *find_thread_by_tid(tid_t tid);
-void remove_thread_from_alllist(struct thread * t);
 
 void thread_exit (void) NO_RETURN;
 void thread_yield (void);

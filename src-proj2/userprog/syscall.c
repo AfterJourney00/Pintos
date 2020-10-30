@@ -16,9 +16,9 @@
 
 typedef int pid_t;
 
-struct lock file_lock;
-static int global_fd = 1;
-struct list file_list;
+struct lock file_lock;          /* Lock for file operations */
+static int global_fd = 1;       /* fd generator */
+struct list file_list;          /* List for storing all opened files */
 
 static void syscall_handler (struct intr_frame *);
 
@@ -26,11 +26,11 @@ void
 syscall_init (void) 
 {
   intr_register_int (0x30, 3, INTR_ON, syscall_handler, "syscall");
-  lock_init(&file_lock);
-  list_init(&file_list);
+  lock_init(&file_lock);        /* Initialize file_lock */
+  list_init(&file_list);        /* Initialize file list */
 }
 
-/* Some helper functions */
+/* Bad pointer checker */
 int
 bad_ptr(const char* file)
 {
@@ -38,6 +38,7 @@ bad_ptr(const char* file)
   if(!(file && is_user_vaddr(file))){
     return 1;
   }
+
   /* check whether the ptr is unmapped */
   if(!pagedir_get_page(thread_current()->pagedir, file)){
     return 1;
@@ -45,6 +46,7 @@ bad_ptr(const char* file)
   return 0;
 }
 
+/* Find the corresponding file descriptor given a fd */
 struct file_des*
 find_des_by_fd(int fd)
 {
@@ -62,6 +64,7 @@ find_des_by_fd(int fd)
   return target_file;
 }
 
+/* Clear all the files opened by thread t */
 void
 clear_files(struct thread* t)
 {
@@ -84,16 +87,14 @@ clear_files(struct thread* t)
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  /* if the interrupt stack is not in range of user address space */
-  /* exit(-1) */
+  /* Check the interrupt stack valid or not */
   if(bad_ptr(f->esp) || bad_ptr((int*)(f->esp) + 1)
                      || bad_ptr((int*)(f->esp) + 2)
                      || bad_ptr((int*)(f->esp) + 3)){
     exit(-1);
   }
   
-  /* if the interrupt code is incalid */
-  /* exit(-1) */
+  /* Check the interrupt code is valid or not */
   int intr_code = *(int*)(f->esp);
   if(intr_code < SYS_HALT || intr_code > SYS_INUMBER){
     exit(-1);
@@ -111,6 +112,7 @@ syscall_handler (struct intr_frame *f)
     {
       /* parse the arguments first */
       int status = *((int*)(f->esp) + 1);
+
       exit(status);
       break;
     }
@@ -119,6 +121,7 @@ syscall_handler (struct intr_frame *f)
     {
       /* parse the arguments first */
       char* cmd = (char*)*((int*)(f->esp) + 1);
+
       f->eax = exec(cmd);
       break;
     }
@@ -137,6 +140,7 @@ syscall_handler (struct intr_frame *f)
       /* parse the arguments first */
       const char* file = (const char*)*((int*)(f->esp) + 1);
       unsigned size = (unsigned)*((int*)(f->esp) + 2);
+
       f->eax = create(file, size);
       break;
     }
@@ -145,6 +149,7 @@ syscall_handler (struct intr_frame *f)
     {
       /* parse the arguments first */
       int fd = *((int*)(f->esp) + 1);
+
       f->eax = remove(fd);
       break;
     }
@@ -153,6 +158,7 @@ syscall_handler (struct intr_frame *f)
     {
       /* parse the arguments first */
       const char* file = (const char*)*((int*)(f->esp) + 1);
+
       f->eax = open(file);
       break;
     }
@@ -161,6 +167,7 @@ syscall_handler (struct intr_frame *f)
     {
       /* parse the arguments first */
       int file_id = *((int*)(f->esp) + 1);
+
       f->eax = filesize(file_id);
       break;
     }
@@ -171,6 +178,7 @@ syscall_handler (struct intr_frame *f)
       int file_id = *((int*)(f->esp) + 1);
       void* buffer = (void*)*((int*)(f->esp) + 2);
       unsigned size = *((unsigned*)(f->esp) + 3);
+
       f->eax = read(file_id, buffer, size);
       break;
     }
@@ -181,6 +189,7 @@ syscall_handler (struct intr_frame *f)
       int fd = *((int*)(f->esp) + 1);
       const void* buffer = (const void*)*((int*)(f->esp) + 2);
       unsigned size = *((unsigned*)(f->esp) + 3);
+
       f->eax = write(fd, buffer, size);
       break;
     }
@@ -189,6 +198,7 @@ syscall_handler (struct intr_frame *f)
     {
       int fd = *((int*)(f->esp) + 1);
       unsigned position = *((unsigned*)(f->esp) + 2);
+
       seek(fd, position);
       break;
     }
@@ -197,6 +207,7 @@ syscall_handler (struct intr_frame *f)
     {
       /* parse the arguments first */
       int fd = *((int*)(f->esp) + 1);
+
       close(fd);
       break;
     }
@@ -222,13 +233,13 @@ exit(int status)
     struct exit_code_list_element* exit_element = malloc(sizeof(struct exit_code_list_element));
     exit_element->thread_tid = cur->tid;
     exit_element->thread_exit_code = status;
+
+    /* push this exit_code_element into children_exit_code_list of parent */
     list_push_back(&(cur->parent_t->children_exit_code_list), &(exit_element->elem));
   }
-  /**********************************/
   
-  enum intr_level old_level = intr_disable();
+  /* Print termination information */
   printf ("%s: exit(%d)\n", cur->name, status);
-  intr_set_level (old_level);
   thread_exit();
   return;
 }
@@ -249,7 +260,6 @@ exec(char* cmd_line)
 int
 wait(pid_t pid)
 {
-  //printf("tid: %d, name: %s\n", thread_current()->tid, thread_current()->name);
   return process_wait(pid);
 }
 
@@ -266,6 +276,7 @@ create(const char* file, unsigned initial_size)
   lock_acquire(&file_lock);
   int success = filesys_create(file, initial_size);
   lock_release(&file_lock);
+
   return success;
 }
 
@@ -279,9 +290,12 @@ remove(const char* file)
   }
 
   int success;
+
+  /* Synchronization: only current thread access pointer file */
   lock_acquire(&file_lock);
   success = filesys_remove(file);
   lock_release(&file_lock);
+
   return success;
 }
 
@@ -300,16 +314,13 @@ open(const char* file)
   struct file *file_opened = filesys_open(file); 
   struct file_des* des;
 
-  /* If open successfully */
   if(file_opened != NULL){
     des = (struct file_des*)malloc(sizeof(struct file_des));
     des->file_ptr = file_opened;
     des->fd = ++global_fd;                       /* Set the fd */
     des->size = file_length(file_opened);        /* Set the size of file */
-    //des->open_tid = thread_current()->tid;
     des->opener = thread_current();              /* Set the opener thread */
     list_push_back(&file_list, &(des->filelem)); /* Push this descriptor into list */
-    //list_push_back(&thread_current()->running_file_list, &des->telem);
 
     lock_release(&file_lock);
 
@@ -325,9 +336,9 @@ open(const char* file)
 int
 filesize(int fd)
 {
-  struct file_des* f = find_des_by_fd(fd);
-  if(f == NULL){
-    return -1;
+  struct file_des* f = find_des_by_fd(fd);      /* Find the target file descriptor */
+  if(f == NULL){                                /* If no target file descriptor */
+    return -1;                                  /* return -1 */
   }
   else{
     return f->size;
@@ -388,19 +399,17 @@ write(int fd, const void *buffer, unsigned size)
   /* Synchronization: do write operation holding the file_lock */
   lock_acquire(&file_lock);
   
-  if(fd == STDIN_FILENO){
+  if(fd == STDIN_FILENO){           /* WRITE syscall, do not support STDIN */
     res = -1;
   }
-  else if(fd == STDOUT_FILENO){
-    intr_disable(); 
+  else if(fd == STDOUT_FILENO){     /* If STDOUT mode */
     putbuf(buffer, size);
-    intr_enable();
     res = size;
   }
   else{
-    struct file_des *f = find_des_by_fd(fd);
-    if(f == NULL){
-      res = -1;
+    struct file_des *f = find_des_by_fd(fd);    /* Find the target file descriptor */
+    if(f == NULL){                              /* If no target file descriptor */
+      res = -1;                                 /* return -1 */
     }
     else{
       res = file_write(f->file_ptr, buffer, size);
@@ -417,12 +426,12 @@ seek(int fd, unsigned position)
 {
   lock_acquire(&file_lock);
 
-  struct file_des* f = find_des_by_fd(fd);
-  if(f == NULL){
-    goto done;
+  struct file_des* f = find_des_by_fd(fd);    /* Find the target file descriptor */
+  if(f == NULL){                              /* If no target file descriptor */
+    goto done;      
   }
   else{
-    if(f->file_ptr == NULL){
+    if(f->file_ptr == NULL){                  /* If the file in file descriptor invalid*/
       goto done;
     }
     else{
@@ -441,13 +450,13 @@ unsigned tell(int fd)
   unsigned res;
   lock_acquire(&file_lock);
 
-  struct file_des* f = find_des_by_fd(fd);
-  if(f == NULL){
+  struct file_des* f = find_des_by_fd(fd);    /* Find the target file descriptor */
+  if(f == NULL){                              /* If no target file descriptor */
     res = 0;
     goto done;
   }
   else{
-    if(f->file_ptr == NULL){
+    if(f->file_ptr == NULL){                  /* If the file in file descriptor invalid*/
       res = 0;
       goto done;
     }
@@ -467,7 +476,9 @@ close(int fd)
 {
   lock_acquire(&file_lock);
 
-  struct file_des *f = find_des_by_fd(fd);
+  struct file_des *f = find_des_by_fd(fd);    /* Find the target file descriptor */
+
+  /* Check the file is valid or not and check the closer is also the opener or not */
   if(f == NULL || f->opener != thread_current()){
     goto done;
   }
