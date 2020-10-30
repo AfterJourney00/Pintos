@@ -378,6 +378,7 @@ read(int fd, void *buffer, unsigned size)
 int
 write(int fd, const void *buffer, unsigned size)
 {
+  /* First check the buffer is a bad ptr or not */
   if(bad_ptr(buffer)){
     exit(-1);
   }

@@ -6,11 +6,11 @@ typedef int pid_t;
 
 struct file_des
 {
-  int fd;
-  int size;
-  struct file *file_ptr;
-  struct thread* opener;
-  struct list_elem filelem;
+  int fd;                             /* File descriptor number */
+  int size;                           /* Size of this file */
+  struct file *file_ptr;              /* The pointer of this file */
+  struct thread* opener;              /* The thread open this file */
+  struct list_elem filelem;           /* Element for list */
 };
 
 void syscall_init (void);
