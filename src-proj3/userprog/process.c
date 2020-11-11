@@ -19,6 +19,7 @@
 #include "threads/synch.h"
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
+#include "vm/frame.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (char **file_name, void (**eip) (void), void **esp, int argc);
@@ -609,14 +610,35 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-      uint8_t *kpage = palloc_get_page (PAL_USER);
-      if (kpage == NULL)
+
+      /* ******New****** */
+      struct frame* f = frame_create(PAL_USER);
+      uint8_t *kpage = NULL;
+      if(f == NULL){
         return false;
+      }
+      else{
+        kpage = f->frame_base;
+      }
+      /* ******New****** */
+
+      /* ******Old****** */
+      // uint8_t *kpage = palloc_get_page (PAL_USER);
+      // if (kpage == NULL)
+      //   return false;
+      /* ******Old****** */
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
         {
-          palloc_free_page (kpage);
+          /* ******Old****** */
+          /*palloc_free_page (kpage);*/
+          /* ******Old****** */
+
+          /* ******New****** */
+          free_frame(f);
+          /* ******New****** */
+
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -624,7 +646,14 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
-          palloc_free_page (kpage);
+          /* ******Old****** */
+          /*palloc_free_page (kpage);*/
+          /* ******Old****** */
+
+          /* ******New****** */
+          free_frame(f);
+          /* ******New****** */
+
           return false; 
         }
 
@@ -642,10 +671,20 @@ static bool
 setup_stack (void **esp, char **argv, int argc) 
 {
   /* esp is the pointer pointing to stack pointer, *esp is the stack pointer */
-  uint8_t *kpage;
+  uint8_t *kpage = NULL;
   bool success = false;
   
-  kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  /* ******Old****** */
+  // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
+  /* ******Old****** */
+
+  /* ******New****** */
+  struct frame* f = frame_create(PAL_USER | PAL_ZERO);
+  if(f != NULL){
+    kpage = f->frame_base;
+  }
+  /* ******New****** */
+
   if (kpage != NULL) 
     {
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
@@ -697,8 +736,11 @@ setup_stack (void **esp, char **argv, int argc)
         *esp = *esp - 4;
         *(void**)(*esp) = (void*)0;
       }
-      else
-        palloc_free_page (kpage);
+      else{
+        // palloc_free_page (kpage);
+        printf("here?\n");
+        free_frame(f);
+      }
     }
   return success;
 }

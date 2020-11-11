@@ -8,7 +8,7 @@
 #include "threads/pte.h"
 
 /* Frame table, every entry is a frame */
-list frame_table;
+struct list frame_table;
 
 /* Frame */
 struct frame{
@@ -18,8 +18,12 @@ struct frame{
   struct list_elem elem;        /* Element for list */
 };
 
-bool frame_init(void);
-struct frame* frame_create(void);
+/* Operations on frame_table */
+void initialize_frame_table(void);
+
+/* Operations on frame */
+bool frame_init(struct frame* f, enum palloc_flags flag);
+struct frame* frame_create(enum palloc_flags flag);
 uint8_t* frame_allocation(enum palloc_flags flag);
 bool free_frame(struct frame* f);
 void evict(struct frame* f);

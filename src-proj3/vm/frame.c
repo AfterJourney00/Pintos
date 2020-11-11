@@ -6,8 +6,15 @@
 #include "userprog/syscall.h"
 #include "vm/frame.h"
 
+void
+initialize_frame_table(void)
+{
+  list_init(&frame_table);
+  return;
+}
+
 bool
-frame_init(struct frame* f)
+frame_init(struct frame* f, enum palloc_flags flag)
 {
   bool success = false;
 
@@ -16,11 +23,12 @@ frame_init(struct frame* f)
     goto done;
   }
 
-  uint8_t* frame_base = frame_allocation();
+  /* Try to allocate a frame */
+  uint8_t* frame_base = frame_allocation(flag);
   if(frame_base == NULL){
     goto done;
   }
-
+  
   /* Initialize frame elements */
   f->frame_base = frame_base;
   lock_init(&f->f_lock);
@@ -33,7 +41,7 @@ done:
 }
 
 struct frame*
-frame_create(void)
+frame_create(enum palloc_flags flag)
 {
   /* Allocate space */
   struct frame* f = (struct frame*) malloc(sizeof(struct frame));
@@ -42,14 +50,16 @@ frame_create(void)
   }
 
   /* Initialize the frame */
-  if(!frame_init(f)){
-    /*free_frame*/
+  if(!frame_init(f, flag)){
+    free_frame(f);
     f = NULL;
     goto done;
   }
 
   /* push the new frame into the frame table */
+  lock_acquire(&f->f_lock);
   list_push_back(&frame_table, &f->elem);
+  lock_release(&f->f_lock);
 
 done:
   return f;
@@ -60,11 +70,11 @@ frame_allocation(enum palloc_flags flag)
 {
   uint8_t* frame_base = NULL;
   if(flag == PAL_USER | PAL_ZERO){
-    uint8_t* frame_base = (uint8_t*)palloc_get_page(PAL_USER | PAL_ZERO);
+    frame_base = (uint8_t*)palloc_get_page(PAL_USER | PAL_ZERO);
   }
   else{
     if(flag == PAL_USER){
-      uint8_t* frame_base = (uint8_t*)palloc_get_page(PAL_USER);
+      frame_base = (uint8_t*)palloc_get_page(PAL_USER);
     }
   }
   return frame_base;
@@ -73,5 +83,27 @@ frame_allocation(enum palloc_flags flag)
 bool
 free_frame(struct frame* f)
 {
+  printf("freeing\n");
+  bool success = false;
+  
+  /* Check the given ptr is valid or not */
+  if(f == NULL){
+    goto done;
+  }
 
+  /* Free the frame allocated before */
+  if(f->frame_base != NULL){
+    palloc_free_page (f->frame_base);
+  }
+
+  /* Remove and free this frame table entry */
+  lock_acquire(&f->f_lock);
+  list_remove(&f->elem);
+  lock_release(&f->f_lock);
+  free(f);
+
+  success = true;
+
+done:
+  return success;
 }
