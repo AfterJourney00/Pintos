@@ -33,6 +33,7 @@ frame_init(struct frame* f, enum palloc_flags flag)
   f->frame_base = frame_base;
   lock_init(&f->f_lock);
   f->allocator = thread_current()->tid;
+  f->pte = NULL;
 
   success = true;
   
@@ -80,10 +81,35 @@ frame_allocation(enum palloc_flags flag)
   return frame_base;
 }
 
+struct frame*
+find_frame_table_entry_by_frame(uint8_t* f)
+{
+  struct frame* fe = NULL;
+  for(struct list_elem* iter = list_begin(&frame_table);
+                        iter != list_end(&frame_table);
+                        iter = list_next(iter)){
+    fe = list_entry(iter, struct frame, elem);
+    if(fe->frame_base == f){
+      return fe;
+    }
+  }
+  return fe;
+}
+
+void
+set_pte_to_given_frame(uint8_t* frame_base, uint8_t* pte)
+{
+  struct frame* fe = find_frame_table_entry_by_frame(frame_base);
+  if(!fe){
+    return;
+  }
+  fe->pte = pte;
+  return;
+}
+
 bool
 free_frame(struct frame* f)
 {
-  printf("freeing\n");
   bool success = false;
   
   /* Check the given ptr is valid or not */

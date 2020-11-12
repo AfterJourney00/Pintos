@@ -5,6 +5,8 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
+#include "lib/kernel/hash.h"
+#include "vm/sup_page.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -117,6 +119,9 @@ struct thread
     bool exited;                        /* Record whether the thread is exited */
     int exit_code;                      /* The exit code returned when the thread exits */
     struct list children_exit_code_list;/* A list used to record children threads' exit code*/
+
+    /* proj3 */
+    struct hash page_table;             /* Page table of this thread(process) */   
 #endif
 
     /* Owned by thread.c. */

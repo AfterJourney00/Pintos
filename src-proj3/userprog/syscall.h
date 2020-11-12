@@ -1,6 +1,8 @@
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 #include "threads/thread.h"
+#include "vm/frame.h"
+#include "vm/sup_page.h"
 
 typedef int pid_t;
 
@@ -16,6 +18,7 @@ struct file_des
 
 void syscall_init (void);
 
+/* System calls */
 void halt(void);
 void exit(int status);
 pid_t exec(char* cmd_line);
@@ -33,5 +36,6 @@ void close(int fd);
 /* Helper functions */
 int bad_ptr(const char* file);
 void clear_files(struct thread* t);
+bool grow_stack(void* ptr);
 
 #endif /* userprog/syscall.h */

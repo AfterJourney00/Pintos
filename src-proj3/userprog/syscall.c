@@ -82,6 +82,27 @@ clear_files(struct thread* t)
   return;
 }
 
+/* Function for stack growing */
+bool
+grow_stack(void* ptr)
+{
+  bool success = false;
+
+  struct frame* fe = frame_create(PAL_USER | PAL_ZERO);
+  if(fe == NULL){
+    goto done;
+  }
+  else{
+    success = pagedir_set_page(thread_current()->pagedir, pg_round_down(ptr), fe->frame_base, true);
+    if(!success){
+      free_frame(fe);
+    }
+  }
+
+done:
+  return success;
+}
+
 
 /* Syscall handler */
 static void

@@ -123,6 +123,9 @@ start_process (void *file_name_)
   char **argv = (char**)malloc(128); /* Limit the arguments less than 128 bytes */
   int argc = 0;                      /* Count of arguments passed in on one command line. */
 
+  /* Initialize this process's page_table */
+  hash_init(&cur->page_table, compute_page_hash_value, compare_page_hash_value, NULL);
+
   /* argv[0] is the real file name, and remaining are arguments */
   /* argc = 1(real file name) + # of arguments */
   for (char *token = strtok_r ((char *)file_name, " ", &save_ptr);
@@ -287,11 +290,14 @@ process_exit (void)
     free(ece);
   }
 
-  /* Close those files opened by this thread */
+  /* Allow write */
   if (cur->file_running != NULL){
     file_allow_write(cur->file_running);
     cur->file_running = NULL;
   }
+
+  /* Clear this process's page table */
+  hash_destroy(&cur->page_table, free_page_table_entry);
 
   if(cur->parent_t != NULL){
     list_remove(&cur->childelem);       /* remove current thread from its parent's children list */
@@ -738,7 +744,6 @@ setup_stack (void **esp, char **argv, int argc)
       }
       else{
         // palloc_free_page (kpage);
-        printf("here?\n");
         free_frame(f);
       }
     }
