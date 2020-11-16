@@ -15,7 +15,7 @@ struct frame{
   uint8_t *frame_base;          /* Base address */
   struct lock f_lock;           /* Lock per frame */
   tid_t allocator;              /* The frame's allocator */
-  uint8_t *pte;                 /* Record the corresponding page table entry */
+  uint32_t *pte;                /* Record the corresponding page table entry */
   // uint8_t* user_vaddr;          /* Record the corresponding user virtual address */
   struct list_elem elem;        /* Element for list */
 };
@@ -31,7 +31,7 @@ bool free_frame(struct frame* f);
 
 /* Functionality needed by other parts */
 struct frame* find_frame_table_entry_by_frame(uint8_t* f);
-void set_pte_to_given_frame(uint8_t* frame_base, uint8_t* pte);
+void set_pte_to_given_frame(uint8_t* frame_base, uint32_t* pte);
 void evict(struct frame* f);
 
 

@@ -13,12 +13,16 @@
 #include "threads/malloc.h"
 #include "devices/input.h"
 #include "threads/synch.h"
+#include "vm/sup_page.h"
+
+#define USER_STACK_BASE 0x08048000
 
 typedef int pid_t;
 
 struct lock file_lock;          /* Lock for file operations */
 static int global_fd = 1;       /* fd generator */
 struct list file_list;          /* List for storing all opened files */
+static uint32_t *stack_pointer; /* Functional stack pointer */
 
 static void syscall_handler (struct intr_frame *);
 
@@ -82,6 +86,14 @@ clear_files(struct thread* t)
   return;
 }
 
+/* Function foe condition check of stack growth */
+bool
+is_request_extra_stack(void* ptr)
+{
+  return !(ptr < USER_STACK_BASE || (unsigned)stack_pointer - (unsigned)ptr > 32);
+                                //  || (int)((unsigned)stack_pointer - (unsigned)ptr) <= 0);
+}
+
 /* Function for stack growing */
 bool
 grow_stack(void* ptr)
@@ -93,6 +105,7 @@ grow_stack(void* ptr)
     goto done;
   }
   else{
+    // success = install_page(pg_round_down(ptr), fe->frame_base, true);
     success = pagedir_set_page(thread_current()->pagedir, pg_round_down(ptr), fe->frame_base, true);
     if(!success){
       free_frame(fe);
@@ -108,6 +121,7 @@ done:
 static void
 syscall_handler (struct intr_frame *f) 
 {
+  stack_pointer = f->esp;
   /* Check the interrupt stack valid or not */
   if(bad_ptr(f->esp) || bad_ptr((int*)(f->esp) + 1)
                      || bad_ptr((int*)(f->esp) + 2)
@@ -370,11 +384,67 @@ filesize(int fd)
 int
 read(int fd, void *buffer, unsigned size)
 {
+  // printf("reading\n");
+  // printf("size: %d\n", size);
   /* First check the buffer is a bad ptr or not */
-  if(bad_ptr(buffer)){
+  if(buffer == NULL || !is_user_vaddr(buffer)){
+    
     exit(-1);
   }
+  else{
+    unsigned advance = PGSIZE;
+    int size_copy = (int)size;
+    
+    for(void* ptr = buffer; ptr != NULL; ptr += advance){
+      
+      /* Check the validity of pointer */
+      if(ptr == NULL || !is_user_vaddr(ptr)){
+        // printf("error1\n");
+        // printf("ptr: %p\n", ptr);
+        exit(-1);
+      }
+
+      /* Check whether we need to load a fake page */
+      if(!pagedir_get_page(thread_current()->pagedir, ptr)){
+        /* Check the file user request is a fake_pte or not */
+        struct supp_page* pte = find_fake_pte(&thread_current()->page_table, pg_round_down(ptr));
+        if(pte == NULL){                    /* If no supplemental information stored */
+          if(is_request_extra_stack(ptr)){
+            grow_stack(ptr);                /* Need to grow stack */
+          }
+          else{
+            // printf("ptr: %p\n", ptr);
+            // printf("stack_pointer: %p\n", stack_pointer);
+            // printf("error2\n");
+            // printf("sp - ptr: %u\n", (unsigned)stack_pointer - (unsigned)ptr);
+            exit(-1);
+          }
+        }
+        else{                               /* If supplemental information exists */
+          if(pte->fake_page){               /* If this is a fake page */
+            fake2real_page_convert(pte);    /* Allocate space for this, lazy load */
+          }
+          else{                             /* Impossible real page but not found */
+            // printf("error3\n");
+            exit(-1);
+          }
+        }
+      }
+
+      size_copy -= PGSIZE;
+      if(size_copy <= 0){
+        break;
+      }
+      else if(size_copy - PGSIZE <= 0){
+        advance = PGSIZE - size_copy;
+      }
+      else{
+        advance = PGSIZE;
+      }
+    }
+  }
   
+
   struct file_des* f;
   int success = 0;
 

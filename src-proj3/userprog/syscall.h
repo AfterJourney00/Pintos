@@ -36,6 +36,7 @@ void close(int fd);
 /* Helper functions */
 int bad_ptr(const char* file);
 void clear_files(struct thread* t);
+bool is_request_extra_stack(void* ptr);
 bool grow_stack(void* ptr);
 
 #endif /* userprog/syscall.h */

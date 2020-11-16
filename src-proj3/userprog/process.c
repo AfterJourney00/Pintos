@@ -20,6 +20,7 @@
 #include "threads/vaddr.h"
 #include "userprog/syscall.h"
 #include "vm/frame.h"
+#include "vm/sup_page.h"
 
 static thread_func start_process NO_RETURN;
 static bool load (char **file_name, void (**eip) (void), void **esp, int argc);
@@ -76,14 +77,14 @@ process_execute (const char *file_name)
     palloc_free_page (fn_copy);
     return tid;
   }
-
+  
   /* Find the pointer pointing to the child thread */
   struct thread* t = find_thread_by_tid(tid);
   if(t == NULL){
     palloc_free_page (fn_copy);
     return TID_ERROR;
   }
-
+  
   /* Synchronization: use condition variable to wait child thread */
   lock_acquire(&(cur->loading_lock));
   while(!t->isloaded){
@@ -100,12 +101,12 @@ process_execute (const char *file_name)
       return tid;
     }
   }
-
+  
   /* The chile thread is not exited yet, so check load successfully or not */
   if(t->isloaded != 1){
     return -1;
   }
-
+  
   return tid;
 }
 
@@ -135,16 +136,17 @@ start_process (void *file_name_)
     argv[argc] = token;
     argc++; 
   }
+  
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load (argv, &if_.eip, &if_.esp, argc);
-  
+
   /* free the memory allocated by malloc before */
   free(argv);
-
+  
   if(success){              
     cur->isloaded = 1;     /* load success: set isloaded to 1 */
   }
@@ -164,9 +166,9 @@ start_process (void *file_name_)
     cur->exit_code = -1;   /* load fail: set exit_code to -1 */
     thread_exit ();
   }
-
+  
   palloc_free_page (pg_round_down(file_name));
-
+  
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -412,6 +414,8 @@ static bool validate_segment (const struct Elf32_Phdr *, struct file *);
 static bool load_segment (struct file *file, off_t ofs, uint8_t *upage,
                           uint32_t read_bytes, uint32_t zero_bytes,
                           bool writable);
+static bool lazy_load (struct file *file, off_t ofs, uint8_t *upage,
+                       uint32_t read_bytes, uint32_t zero_bytes,bool writable);
 
 /* Loads an ELF executable from FILE_NAME into the current thread.
    Stores the executable's entry point into *EIP
@@ -430,8 +434,9 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
 
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
-  if (t->pagedir == NULL) 
+  if (t->pagedir == NULL){
     goto done;
+  }
   process_activate ();
 
   /* Open executable file. */
@@ -511,19 +516,22 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
-              if (!load_segment (file, file_page, (void *) mem_page,
-                                 read_bytes, zero_bytes, writable))
+              if (!lazy_load (file, file_page, (void *) mem_page,
+                                 read_bytes, zero_bytes, writable)){
                 goto done;
+              }
             }
-          else
+          else{
             goto done;
+          }
           break;
         }
     }
-  
+
   /* Set up stack. */
-  if (!setup_stack (esp, file_name, argc))
+  if (!setup_stack (esp, file_name, argc)){
     goto done;
+  }
 
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
@@ -534,7 +542,7 @@ done:
   /* We arrive here whether the load is successful or not. */
   return success;
 }
-
+
 /* load() helpers. */
 
 static bool install_page (void *upage, void *kpage, bool writable);
@@ -616,8 +624,6 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
       /* Get a page of memory. */
-
-      /* ******New****** */
       struct frame* f = frame_create(PAL_USER);
       uint8_t *kpage = NULL;
       if(f == NULL){
@@ -626,25 +632,11 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       else{
         kpage = f->frame_base;
       }
-      /* ******New****** */
-
-      /* ******Old****** */
-      // uint8_t *kpage = palloc_get_page (PAL_USER);
-      // if (kpage == NULL)
-      //   return false;
-      /* ******Old****** */
 
       /* Load this page. */
       if (file_read (file, kpage, page_read_bytes) != (int) page_read_bytes)
-        {
-          /* ******Old****** */
-          /*palloc_free_page (kpage);*/
-          /* ******Old****** */
-
-          /* ******New****** */
+        { 
           free_frame(f);
-          /* ******New****** */
-
           return false; 
         }
       memset (kpage + page_read_bytes, 0, page_zero_bytes);
@@ -652,14 +644,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       /* Add the page to the process's address space. */
       if (!install_page (upage, kpage, writable)) 
         {
-          /* ******Old****** */
-          /*palloc_free_page (kpage);*/
-          /* ******Old****** */
-
-          /* ******New****** */
           free_frame(f);
-          /* ******New****** */
-
           return false; 
         }
 
@@ -668,6 +653,35 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
       zero_bytes -= page_zero_bytes;
       upage += PGSIZE;
     }
+  return true;
+}
+
+/* Lazy load implemented using supplemental page table */
+static bool lazy_load (struct file *file, off_t ofs, uint8_t *upage,
+                       uint32_t read_bytes, uint32_t zero_bytes,bool writable)
+{
+  ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
+  ASSERT (pg_ofs (upage) == 0);
+  ASSERT (ofs % PGSIZE == 0);
+  
+  while (read_bytes > 0 || zero_bytes > 0) {
+    /* Calculate how to fill this page.
+       We will read PAGE_READ_BYTES bytes from FILE
+       and zero the final PAGE_ZERO_BYTES bytes. */
+    size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+    if(!supp_page_entry_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable)){
+      return false;
+    }
+
+    /* Advance. */
+    read_bytes -= page_read_bytes;
+    zero_bytes -= page_zero_bytes;
+    ofs += page_read_bytes;
+    upage += PGSIZE;
+  }
+
   return true;
 }
 

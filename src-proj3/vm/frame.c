@@ -23,17 +23,17 @@ frame_init(struct frame* f, enum palloc_flags flag)
     goto done;
   }
 
-  /* Try to allocate a frame */
-  uint8_t* frame_base = frame_allocation(flag);
-  if(frame_base == NULL){
-    goto done;
-  }
-  
   /* Initialize frame elements */
-  f->frame_base = frame_base;
   lock_init(&f->f_lock);
   f->allocator = thread_current()->tid;
   f->pte = NULL;
+
+  /* Try to allocate a frame */
+  uint8_t* frame_base = frame_allocation(flag);
+  f->frame_base = frame_base;
+  if(frame_base == NULL){
+    goto done;
+  }
 
   success = true;
   
@@ -50,17 +50,19 @@ frame_create(enum palloc_flags flag)
     goto done;
   }
 
-  /* Initialize the frame */
-  if(!frame_init(f, flag)){
-    free_frame(f);
-    f = NULL;
-    goto done;
-  }
+  bool is_init = frame_init(f, flag);
 
   /* push the new frame into the frame table */
   lock_acquire(&f->f_lock);
   list_push_back(&frame_table, &f->elem);
   lock_release(&f->f_lock);
+
+  /* Initialize the frame */
+  if(!is_init){
+    free_frame(f);
+    f = NULL;
+    goto done;
+  }
 
 done:
   return f;
@@ -97,7 +99,7 @@ find_frame_table_entry_by_frame(uint8_t* f)
 }
 
 void
-set_pte_to_given_frame(uint8_t* frame_base, uint8_t* pte)
+set_pte_to_given_frame(uint8_t* frame_base, uint32_t* pte)
 {
   struct frame* fe = find_frame_table_entry_by_frame(frame_base);
   if(!fe){
