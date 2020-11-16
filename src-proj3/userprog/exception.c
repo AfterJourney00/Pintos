@@ -127,6 +127,7 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f) 
 {
+   // printf("initial esp: %p\n", esp);
    bool not_present;  /* True: not-present page, false: writing r/o page. */
    bool write;        /* True: access was write, false: access was read. */
    bool user;         /* True: access by user, false: access by kernel. */
@@ -153,11 +154,16 @@ page_fault (struct intr_frame *f)
    write = (f->error_code & PF_W) != 0;
    user = (f->error_code & PF_U) != 0;
    
-   printf ("Page fault at %p: %s error %s page in %s context.\n",
-         fault_addr,
-         not_present ? "not present" : "rights violation",
-         write ? "writing" : "reading",
-         user ? "user" : "kernel");
+   // printf ("Page fault at %p: %s error %s page in %s context.\n",
+   //       fault_addr,
+   //       not_present ? "not present" : "rights violation",
+   //       write ? "writing" : "reading",
+   //       user ? "user" : "kernel");
+
+   void* esp = f->esp;
+   if(!user){
+      esp = (void*)thread_current()->sp;
+   }
 
    struct supp_page* spage = NULL;
    
@@ -168,19 +174,20 @@ page_fault (struct intr_frame *f)
       process_terminate();
    }
    else{
-      printf("esp: %p\n", f->esp);
+      // printf("esp: %p\n", esp);
       void* ptr = pagedir_get_page(thread_current()->pagedir, fault_addr);
-      printf("ptr: %p\n", ptr);
+      
+      // printf("ptr: %p\n", ptr);
       /* Check whether this is a lazy load */
       struct supp_page* spge = find_fake_pte(&thread_current()->page_table,
                                              pg_round_down(fault_addr));
       if(spge == NULL){             /* NO corresponding page */
-         if(!(fault_addr < USER_STACK_BASE || f->esp - fault_addr > 32)){
+         if(!(fault_addr < USER_STACK_BASE || esp - fault_addr > 32)){
             /* Try to grow stack */
             bool success = grow_stack(fault_addr);
-            printf("success: %d\n", success);
+            // printf("success: %d\n", success);
             if(!success){
-               // printf("error2\n");
+               // printf("exception error2\n");
                process_terminate();
             }
             else{
@@ -188,18 +195,21 @@ page_fault (struct intr_frame *f)
             }
          }
          else{
-            // printf("error3\n");
+            // printf("fault_addr: %p\n", fault_addr);
+            // printf("esp: %p\n", esp);
+            // printf("exception error3\n");
             process_terminate();
          }
       }
       else{                         /* Corresponding page exists */
          if(spge->fake_page){       /* This is a fake page */
             /* Try to lazy load, convert fake page to real page */
+            // printf("yizhi shi zhe ge\n");
             fake2real_page_convert(spge);
             return;
          }
          else{                      /* impossible case */
-            // printf("error4\n");
+            // printf("exception error4\n");
             process_terminate();
          }  
       }

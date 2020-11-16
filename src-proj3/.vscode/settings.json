@@ -1,5 +1,11 @@
 {
       "files.associations": {
-            "thread": "c"
+            "thread": "c",
+            "array": "c",
+            "hash_map": "c",
+            "hash_set": "c",
+            "string_view": "c",
+            "initializer_list": "c",
+            "utility": "c"
       }
 }

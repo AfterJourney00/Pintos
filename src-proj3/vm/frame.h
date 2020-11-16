@@ -14,9 +14,12 @@ struct list frame_table;
 struct frame{
   uint8_t *frame_base;          /* Base address */
   struct lock f_lock;           /* Lock per frame */
-  tid_t allocator;              /* The frame's allocator */
+  // tid_t allocator;              /* The frame's allocator */
+  struct thread* allocator;     /* The frame's allocator */
   uint32_t *pte;                /* Record the corresponding page table entry */
-  // uint8_t* user_vaddr;          /* Record the corresponding user virtual address */
+  int64_t created_time;         /* Record the time this frame is created */
+  void* user_vaddr;             /* Record the corresponding user virtual address */
+  bool locked;                  /* Indicate whether the frame can be evicted */
   struct list_elem elem;        /* Element for list */
 };
 
@@ -31,10 +34,8 @@ bool free_frame(struct frame* f);
 
 /* Functionality needed by other parts */
 struct frame* find_frame_table_entry_by_frame(uint8_t* f);
-void set_pte_to_given_frame(uint8_t* frame_base, uint32_t* pte);
-void evict(struct frame* f);
-
-
-
+void set_pte_to_given_frame(uint8_t* frame_base, uint32_t* pte, void* user_ptr);
+struct frame* next_frame_to_evict(void);
+bool try_to_evict(struct frame* f);
 
 #endif

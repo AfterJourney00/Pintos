@@ -118,11 +118,13 @@ struct thread
     int waited;                         /* Record the thread waited, not waited, or terminated */
     bool exited;                        /* Record whether the thread is exited */
     int exit_code;                      /* The exit code returned when the thread exits */
-    struct list children_exit_code_list;/* A list used to record children threads' exit code*/
-
-    /* proj3 */
-    struct hash page_table;             /* Page table of this thread(process) */   
+    struct list children_exit_code_list;/* A list used to record children threads' exit code*/  
 #endif
+
+#ifdef VM
+    struct hash page_table;             /* Page table of this thread(process) */
+    uint8_t* sp;                        /* Record the stack pointer of the thread */
+#endif 
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

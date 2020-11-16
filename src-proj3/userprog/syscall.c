@@ -90,8 +90,10 @@ clear_files(struct thread* t)
 bool
 is_request_extra_stack(void* ptr)
 {
-  return !(ptr < USER_STACK_BASE || (unsigned)stack_pointer - (unsigned)ptr > 32);
-                                //  || (int)((unsigned)stack_pointer - (unsigned)ptr) <= 0);
+  // printf("ptr: %p\n", ptr);
+  // printf("stack_pointer: %p\n", stack_pointer);
+  // printf("difference: %d\n", (int)((unsigned)stack_pointer - (unsigned)ptr) > 32);
+  return !(ptr < USER_STACK_BASE || (int)((unsigned)stack_pointer - (unsigned)ptr) > 32);
 }
 
 /* Function for stack growing */
@@ -122,6 +124,8 @@ static void
 syscall_handler (struct intr_frame *f) 
 {
   stack_pointer = f->esp;
+  thread_current()->sp = stack_pointer;
+
   /* Check the interrupt stack valid or not */
   if(bad_ptr(f->esp) || bad_ptr((int*)(f->esp) + 1)
                      || bad_ptr((int*)(f->esp) + 2)

@@ -4,7 +4,13 @@
 #include "lib/kernel/list.h"
 #include "userprog/pagedir.h"
 #include "userprog/syscall.h"
+#include "devices/timer.h"
+#include "threads/vaddr.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
+#include "vm/sup_page.h"
+
+#define LATEST_CREATE_TIME 0xefffffff
 
 void
 initialize_frame_table(void)
@@ -25,13 +31,18 @@ frame_init(struct frame* f, enum palloc_flags flag)
 
   /* Initialize frame elements */
   lock_init(&f->f_lock);
-  f->allocator = thread_current()->tid;
+  f->allocator = thread_current();
   f->pte = NULL;
+  f->created_time = timer_ticks();
+  f->locked = false;
 
   /* Try to allocate a frame */
   uint8_t* frame_base = frame_allocation(flag);
   f->frame_base = frame_base;
-  if(frame_base == NULL){
+  if(frame_base == NULL){                     /* No more page can be allocated from memory */
+    /* Need to do eviction */
+    struct frame* victim_frame = next_frame_to_evict();
+    success = try_to_evict();
     goto done;
   }
 
@@ -83,32 +94,6 @@ frame_allocation(enum palloc_flags flag)
   return frame_base;
 }
 
-struct frame*
-find_frame_table_entry_by_frame(uint8_t* f)
-{
-  struct frame* fe = NULL;
-  for(struct list_elem* iter = list_begin(&frame_table);
-                        iter != list_end(&frame_table);
-                        iter = list_next(iter)){
-    fe = list_entry(iter, struct frame, elem);
-    if(fe->frame_base == f){
-      return fe;
-    }
-  }
-  return fe;
-}
-
-void
-set_pte_to_given_frame(uint8_t* frame_base, uint32_t* pte)
-{
-  struct frame* fe = find_frame_table_entry_by_frame(frame_base);
-  if(!fe){
-    return;
-  }
-  fe->pte = pte;
-  return;
-}
-
 bool
 free_frame(struct frame* f)
 {
@@ -131,6 +116,82 @@ free_frame(struct frame* f)
   free(f);
 
   success = true;
+
+done:
+  return success;
+}
+
+struct frame*
+find_frame_table_entry_by_frame(uint8_t* f)
+{
+  struct frame* fe = NULL;
+  for(struct list_elem* iter = list_begin(&frame_table);
+                        iter != list_end(&frame_table);
+                        iter = list_next(iter)){
+    fe = list_entry(iter, struct frame, elem);
+    if(fe->frame_base == f){
+      return fe;
+    }
+  }
+  return fe;
+}
+
+void
+set_pte_to_given_frame(uint8_t* frame_base, uint32_t* pte, void* user_ptr)
+{
+  struct frame* fe = find_frame_table_entry_by_frame(frame_base);
+  if(!fe){
+    return;
+  }
+  fe->pte = pte;
+  fe->user_vaddr = user_ptr;
+  return;
+}
+
+/* Use LRC(Least Recently Created) mechanism to evict */
+struct frame*
+next_frame_to_evict(void)
+{
+  unsigned create_time = LATEST_CREATE_TIME;
+  struct frame* target_fe = NULL;
+
+  for(struct list_elem* iter = list_begin(&frame_table);
+                        iter != list_end(&frame_table);
+                        iter = list_next(iter)){
+    struct frame* fe = list_entry(iter, struct frame, elem);
+    if(fe->created_time < create_time && !fe->locked){
+      target_fe = fe;
+      create_time = fe->created_time;
+    }
+  }
+
+  return target_fe;
+}
+
+bool
+try_to_evict(struct frame* f)
+{
+  ASSERT(f != NULL);
+  ASSERT(f->frame_base != NULL && !is_kernel_vaddr(f->frame_base));
+  ASSERT(f->pte != NULL);
+  ASSERT(f->user_vaddr != NULL && is_user_vaddr(f->user_vaddr));
+  ASSERT(f->allocator != NULL && f->allocator->magic == 0xcd6abf4b);
+
+  bool success = false;
+
+  struct thread* allocator_t = f->allocator;
+
+  ASSERT(pagedir_get_page(allocator_t->pagedir, f->user_vaddr));
+
+  struct supp_page* spge = find_fake_pte(&allocator_t->page_table, pg_round_down(f->user_vaddr));
+  if(spge == NULL){     /* No corresponding supplemental page table entry */
+    // create a supplemental page table entry (type: evicted)
+    // unmap the f->user_vaddr, free the page
+  }
+  else{
+    ASSERT(spge->type == CO_EXIST);
+    // convert it to EVICTED
+  }
 
 done:
   return success;

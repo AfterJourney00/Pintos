@@ -137,7 +137,7 @@ pagedir_set_page (uint32_t *pd, void *upage, void *kpage, bool writable)
       *pte = pte_create_user (kpage, writable);
 
       /* fill corresponding information in frame */
-      set_pte_to_given_frame(kpage, pte);
+      set_pte_to_given_frame(kpage, pte, upage);
 
       return true;
     }
