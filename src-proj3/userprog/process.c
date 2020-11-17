@@ -671,7 +671,8 @@ static bool lazy_load (struct file *file, off_t ofs, uint8_t *upage,
     size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
-    if(!supp_page_entry_create(file, ofs, upage, page_read_bytes, page_zero_bytes, writable)){
+    if(!supp_page_entry_create(LAZY_LOAD, file, ofs, upage, page_read_bytes, 
+                                                      page_zero_bytes, writable)){
       return false;
     }
 

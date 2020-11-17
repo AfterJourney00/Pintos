@@ -170,14 +170,10 @@ page_fault (struct intr_frame *f)
    /* If the fault address is NULL or a kernel address
     or the fault is not non-present fault,  terminate process*/
    if(fault_addr == NULL || !is_user_vaddr(fault_addr) || !not_present){
-      // printf("error1\n");
+      // printf("exception error1\n");
       process_terminate();
    }
    else{
-      // printf("esp: %p\n", esp);
-      void* ptr = pagedir_get_page(thread_current()->pagedir, fault_addr);
-      
-      // printf("ptr: %p\n", ptr);
       /* Check whether this is a lazy load */
       struct supp_page* spge = find_fake_pte(&thread_current()->page_table,
                                              pg_round_down(fault_addr));
@@ -185,7 +181,6 @@ page_fault (struct intr_frame *f)
          if(!(fault_addr < USER_STACK_BASE || esp - fault_addr > 32)){
             /* Try to grow stack */
             bool success = grow_stack(fault_addr);
-            // printf("success: %d\n", success);
             if(!success){
                // printf("exception error2\n");
                process_terminate();
@@ -195,8 +190,6 @@ page_fault (struct intr_frame *f)
             }
          }
          else{
-            // printf("fault_addr: %p\n", fault_addr);
-            // printf("esp: %p\n", esp);
             // printf("exception error3\n");
             process_terminate();
          }

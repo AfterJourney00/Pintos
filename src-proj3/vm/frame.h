@@ -36,6 +36,6 @@ bool free_frame(struct frame* f);
 struct frame* find_frame_table_entry_by_frame(uint8_t* f);
 void set_pte_to_given_frame(uint8_t* frame_base, uint32_t* pte, void* user_ptr);
 struct frame* next_frame_to_evict(void);
-bool try_to_evict(struct frame* f);
+bool try_to_evict(struct frame* f, size_t swap_idx);
 
 #endif

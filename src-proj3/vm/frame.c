@@ -41,8 +41,12 @@ frame_init(struct frame* f, enum palloc_flags flag)
   f->frame_base = frame_base;
   if(frame_base == NULL){                     /* No more page can be allocated from memory */
     /* Need to do eviction */
+    printf("eviction\n");
     struct frame* victim_frame = next_frame_to_evict();
-    success = try_to_evict();
+    size_t swap_idx = write_into_swap_space(victim_frame->user_vaddr);
+    printf("here\n");
+    success = try_to_evict(victim_frame, swap_idx);
+    
     goto done;
   }
 
@@ -169,7 +173,7 @@ next_frame_to_evict(void)
 }
 
 bool
-try_to_evict(struct frame* f)
+try_to_evict(struct frame* f, size_t swap_idx)
 {
   ASSERT(f != NULL);
   ASSERT(f->frame_base != NULL && !is_kernel_vaddr(f->frame_base));
@@ -185,13 +189,19 @@ try_to_evict(struct frame* f)
 
   struct supp_page* spge = find_fake_pte(&allocator_t->page_table, pg_round_down(f->user_vaddr));
   if(spge == NULL){     /* No corresponding supplemental page table entry */
-    // create a supplemental page table entry (type: evicted)
-    // unmap the f->user_vaddr, free the page
+    if(!create_evicted_pte(allocator_t, swap_idx)){
+      goto done;
+    }
   }
   else{
-    ASSERT(spge->type == CO_EXIST);
-    // convert it to EVICTED
+    if(!real2evicted_page_convert(spge, swap_idx)){
+      goto done;
+    }
   }
+
+  pagedir_clear_page(allocator_t->pagedir, f->user_vaddr);
+  free_frame(f);
+  success = true;
 
 done:
   return success;

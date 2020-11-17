@@ -28,7 +28,9 @@ struct supp_page
   uint32_t zero_bytes;            /* Record how many bytes to set to 0 */
   bool writable;                  /* Record the writable attribute of this page */
 
-  bool fake_page;                 /* Inidicate this page is a fake page or real */   
+  bool fake_page;                 /* Inidicate this page is a fake page or real */ 
+
+  size_t swap_idx;                /* Record which swap slot evicted to(only for type:EVICTED) */  
   
   struct hash_elem h_elem;    /* Element for hash table */
 };
@@ -41,11 +43,14 @@ void free_page_table_entry(const struct hash_elem *e, void *aux UNUSED);
 /* Basic lifecycle of a sup_page entry */
 bool supp_page_entry_create(enum supp_type type, struct file *file, off_t ofs, uint8_t *upage,
                             uint32_t read_bytes, uint32_t zero_bytes, bool writable);
-void supp_page_entry_setting(struct supp_page* sup, struct file *file, off_t ofs, uint8_t *upage,
+void entry_setting_lazy(struct supp_page* sup, struct file *file, off_t ofs, uint8_t *upage,
                               uint32_t read_bytes, uint32_t zero_bytes, bool writable);
+void entry_setting_co(struct supp_page* sup, uint8_t *upage);
 
 /* Auxilary functionality for other parts */
 struct supp_page* find_fake_pte(struct hash *hash_table, void *key);
 bool fake2real_page_convert(struct supp_page* spge);
+bool create_evicted_pte(struct thread* t, size_t swap_idx);
+bool real2evicted_page_convert(struct supp_page* spge, size_t swap_idx);
 
 #endif

@@ -10,7 +10,7 @@
 
 bool block_device_create(void);
 size_t next_start_to_swap(void);
-void write_into_swap_space(const void* dest);
-void read_from_swap_space(size_t start_sector, void* dest);
+size_t write_into_swap_space(const void* dest);
+size_t read_from_swap_space(size_t start_sector, void* dest);
 
 #endif

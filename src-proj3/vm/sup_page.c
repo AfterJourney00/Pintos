@@ -75,8 +75,14 @@ supp_page_entry_create(enum supp_type type, struct file *file, off_t ofs, uint8_
   else{
     spge->type = type;
 
-    /* Set all attributes of this new supplemental page entry */
-    supp_page_entry_setting(spge, file, ofs, upage, read_bytes, zero_bytes, writable);
+    switch(spge->type){
+      case LAZY_LOAD:
+        entry_setting_lazy(spge, file, ofs, upage, read_bytes, zero_bytes, writable);
+        break;
+      case CO_EXIST:
+        entry_setting_co(spge, upage);
+        break;
+    }
 
     /* Insert this new entry into current process's sup-page-table */
     struct hash_elem * he = hash_insert (&thread_current()->page_table, &spge->h_elem);
@@ -93,8 +99,9 @@ done:
 }
 
 /* Set all attributes of a given supp_page entry */
-void supp_page_entry_setting(struct supp_page* sup, struct file *file, off_t ofs, uint8_t *upage,
-                              uint32_t read_bytes, uint32_t zero_bytes, bool writable)
+void
+entry_setting_lazy(struct supp_page* sup, struct file *file, off_t ofs, uint8_t *upage,
+                    uint32_t read_bytes, uint32_t zero_bytes, bool writable)
 {
   ASSERT(sup != NULL);            /* Assert the given sup_page_entry is not a NULL */
 
@@ -109,11 +116,28 @@ void supp_page_entry_setting(struct supp_page* sup, struct file *file, off_t ofs
   return;
 }
 
+void
+entry_setting_co(struct supp_page* sup, uint8_t *upage)
+{
+  ASSERT(sup != NULL);            /* Assert the given sup_page_entry is not a NULL */
+
+  sup->user_vaddr = upage;
+  sup->file_in_this_page = NULL;
+  sup->load_offset = 0;
+  sup->read_bytes = 0;
+  sup->zero_bytes = 0;
+  sup->writable = false;
+  sup->fake_page = false;
+
+  return;
+}
+
 bool
 fake2real_page_convert(struct supp_page* spge)
 {
   ASSERT(spge != NULL);
-  // printf("fake2real: %p\n", spge->user_vaddr);
+  ASSERT(spge->type == LAZY_LOAD);
+
   uint8_t* upage = spge->user_vaddr; 
   struct file* loading_file = spge->file_in_this_page;
   off_t ofs = spge->load_offset;
@@ -152,7 +176,46 @@ fake2real_page_convert(struct supp_page* spge)
 
   success = true;
   spge->fake_page = false;
+  spge->type = CO_EXIST;
 
 done:
   return success;
+}
+
+bool
+create_evicted_pte(struct thread* t, size_t swap_idx)
+{
+  ASSERT(t != NULL && t->magic == 0xcd6abf4b);
+
+  bool success = false;
+
+  struct supp_page* spge = malloc(sizeof(struct supp_page));
+  if(spge == NULL){
+    goto done;
+  }
+  spge->type = EVICTED;
+  spge->swap_idx = swap_idx;
+
+  /* Insert this new entry into corresponding process's sup-page-table */
+  struct hash_elem * he = hash_insert(&t->page_table, &spge->h_elem);
+  if(he != NULL){     /* If this new sup-page-entry has existed */
+    goto done;
+  }
+
+  success = true;
+
+done:
+  return success;
+}
+
+bool
+real2evicted_page_convert(struct supp_page* spge, size_t swap_idx)
+{
+  ASSERT(spge != NULL);
+  ASSERT(spge->type == CO_EXIST);
+
+  spge->type = EVICTED;
+  spge->swap_idx = swap_idx;
+
+  return true;
 }
