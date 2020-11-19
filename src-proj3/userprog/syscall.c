@@ -98,7 +98,6 @@ bool
 grow_stack(void* ptr)
 {
   bool success = false;
-
   struct frame* fe = frame_create(PAL_USER | PAL_ZERO);
   if(fe == NULL){
     goto done;
@@ -108,6 +107,10 @@ grow_stack(void* ptr)
     success = pagedir_set_page(thread_current()->pagedir, pg_round_down(ptr), fe->frame_base, true);
     if(!success){
       free_frame(fe);
+    }
+    else{
+      /* Create a corresponding supplemental page table */
+      success = supp_page_entry_create(CO_EXIST, NULL, 0, ptr, 0, 0, true);
     }
   }
 
@@ -383,10 +386,12 @@ open(const char* file)
   if(bad_ptr(file)){
     exit(-1);
   }  
-
+  
   /* Synchronization: only current thread access pointer file */
   lock_acquire(&file_lock);
 
+  // printf("file to open: %s\n", file);
+  // printf("from syscall.c open(): \n");
   struct file *file_opened = filesys_open(file); 
   struct file_des* des;
 
@@ -399,10 +404,11 @@ open(const char* file)
     list_push_back(&file_list, &(des->filelem)); /* Push this descriptor into list */
 
     lock_release(&file_lock);
-
+    // printf("global_fd: %d\n", global_fd);
     return global_fd;
   }
   else{
+    // printf("open_error2\n");
     lock_release(&file_lock);
     return -1;
   }
@@ -703,13 +709,13 @@ void
 munmap (mapid_t mapping)
 {
   ASSERT(mapping >= 0);     /* Assert that the given mapping id is a valid one */
-
+  
   /* Find the corresponding mapping from this process */
   struct mmap_file_des* mf_des = find_map_by_id(mapping);
   if(mf_des == NULL){
     exit(-1);
   }
-
+  
   /* Find all supplemental page table entries belonging to this mapping */
   struct file* unmapping_file = mf_des->file_ptr;
   int length = mf_des->length;
@@ -718,21 +724,25 @@ munmap (mapid_t mapping)
   ASSERT(pg_round_down(start_ptr) == start_ptr);
 
   lock_acquire(&file_lock);
-
+  
   for(int advance = 0; advance < length; advance += PGSIZE){
     struct supp_page* spge = find_fake_pte(&thread_current()->page_table, start_ptr + advance);
-    if(!try_to_unmap(spge, advance)){  /* Try to unmap this spge */
+    int write_length = PGSIZE;
+    if(advance + PGSIZE > length){
+      write_length = length - advance;
+    }
+    if(!try_to_unmap(spge, advance, write_length)){  /* Try to unmap this spge */
       exit(-1);
     }  
     free(spge);                       /* Free the supplemental page table entry*/
   }
-
+  
   /* Close the file and clear the memory mapped file descriptor */
   file_close(mf_des->file_ptr);
   list_remove(&mf_des->elem);
 
   lock_release(&file_lock);
-
+  
   free(mf_des);
 
   return;

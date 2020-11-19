@@ -9,11 +9,12 @@
 
 /* Frame table, every entry is a frame */
 struct list frame_table;
+struct lock frame_lock;
 
 /* Frame */
 struct frame{
   uint8_t *frame_base;          /* Base address */
-  struct lock f_lock;           /* Lock per frame */
+  // struct lock f_lock;           /* Lock per frame */
   // tid_t allocator;              /* The frame's allocator */
   struct thread* allocator;     /* The frame's allocator */
   uint32_t *pte;                /* Record the corresponding page table entry */

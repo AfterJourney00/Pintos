@@ -291,16 +291,23 @@ process_exit (void)
     list_remove(iter);
     free(ece);
   }
-
+  
   /* Allow write */
   if (cur->file_running != NULL){
     file_allow_write(cur->file_running);
     cur->file_running = NULL;
   }
 
-  /* Clear this process's page table */
-  hash_destroy(&cur->page_table, free_page_table_entry);
-
+#ifdef VM
+  /* Unmap all mapped files */
+  struct list_elem* iter = list_begin(&cur->mmap_file_list); 
+  while(iter != list_end(&cur->mmap_file_list)){
+    struct mmap_file_des* mfds = list_entry(iter, struct mmap_file_des, elem);
+    iter = list_next(iter);
+    munmap(mfds->id);
+  }
+#endif
+  
   if(cur->parent_t != NULL){
     list_remove(&cur->childelem);       /* remove current thread from its parent's children list */
     lock_acquire(&(cur->parent_t->loading_lock));
@@ -308,7 +315,7 @@ process_exit (void)
     cond_broadcast(&(cur->parent_t->loading_cond), &(cur->parent_t->loading_lock));
     lock_release(&(cur->parent_t->loading_lock));
   }
-
+  
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -328,6 +335,9 @@ process_exit (void)
   
   /* Clear all files opened by current thread */
   clear_files(cur);
+
+  /* Clear this process's page table */
+  hash_destroy(&cur->page_table, free_page_table_entry);
 }
 
 /* Sets up the CPU for running user code in the current
@@ -438,7 +448,7 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
     goto done;
   }
   process_activate ();
-
+  // printf("loading file_name is: %s\n", file_name[0]);
   /* Open executable file. */
   file = filesys_open (file_name[0]);
   if (file == NULL) 
@@ -711,8 +721,6 @@ setup_stack (void **esp, char **argv, int argc)
       success = install_page (((uint8_t *) PHYS_BASE) - PGSIZE, kpage, true);
       if (success)
       {
-        /* Offset of the PHYS_BASE. */
-        /* *esp = PHYS_BASE - 12; */
         /* Initial the stack pointer as the base physical address */
         *esp = PHYS_BASE;
 
@@ -756,6 +764,11 @@ setup_stack (void **esp, char **argv, int argc)
         /* Return address is here. */
         *esp = *esp - 4;
         *(void**)(*esp) = (void*)0;
+
+        /* Create a corresponding supplemental page table entry */
+        #ifdef VM
+        success = supp_page_entry_create(CO_EXIST, NULL, 0, f->user_vaddr, 0, 0, true);
+        #endif
       }
       else{
         // palloc_free_page (kpage);

@@ -194,6 +194,7 @@ page_fault (struct intr_frame *f)
       else{                         /* Corresponding page exists */
          if(spge->type == LAZY_LOAD){       /* This is a fake page */
             /* Try to lazy load, convert fake page to real page */
+            // printf("here\n");
             if(!fake2real_page_convert(spge)){
                // printf("exception error4\n");
                process_terminate();
@@ -203,10 +204,12 @@ page_fault (struct intr_frame *f)
          else{                      /* Need to reclaimation or impossible case */
             // printf("Do reclaimation\n");
             ASSERT(spge->type == EVICTED);
+            // printf("ke bu ke yi write ne?: %d\n", spge->writable);
             if(!try_to_do_reclaimation(spge)){
                // printf("exception error5\n");
                process_terminate();
             }
+            // printf("reclaimation finish\n");
             return;
          }  
       }

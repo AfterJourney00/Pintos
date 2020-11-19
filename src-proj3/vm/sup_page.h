@@ -53,6 +53,6 @@ bool fake2real_page_convert(struct supp_page* spge);
 bool create_evicted_pte(struct thread* t, size_t swap_idx, void* uvaddr);
 bool real2evicted_page_convert(struct supp_page* spge, size_t swap_idx);
 bool try_to_do_reclaimation(struct supp_page* spge);
-bool try_to_unmap(struct supp_page* spge, int advance);
+bool try_to_unmap(struct supp_page* spge, int advance, int write_length);
 
 #endif

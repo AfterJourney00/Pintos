@@ -63,7 +63,6 @@ bool
 supp_page_entry_create(enum supp_type type, struct file *file, off_t ofs, uint8_t *upage,
                         uint32_t read_bytes, uint32_t zero_bytes, bool writable)
 {
-  ASSERT(file != NULL);           /* Assert the given file ptr is not a NULL */
   ASSERT(is_user_vaddr(upage));   /* Assert the given user addr is really in user space */
 
   bool success = false;
@@ -232,9 +231,11 @@ real2evicted_page_convert(struct supp_page* spge, size_t swap_idx)
 {
   ASSERT(spge != NULL);
   ASSERT(spge->type == CO_EXIST);
-
+  // printf("real2evicted_page_convert, uvaddr = %p\n", spge->user_vaddr);
+  // printf("zhe ge page ke bu ke yi xie?: %d\n", spge->writable);
   spge->type = EVICTED;
   spge->swap_idx = swap_idx;
+  spge->writable = true;
 
   return true;
 }
@@ -257,7 +258,9 @@ try_to_do_reclaimation(struct supp_page* spge)
     free_frame(f);
     goto done;
   }
+  // printf("dao zhe li yinggai mei you wen ti\n");
   read_from_swap_space(spge->swap_idx, spge->user_vaddr);
+  
   spge->type = CO_EXIST;
   spge->swap_idx = -1;
 
@@ -268,12 +271,12 @@ done:
 }
 
 bool
-try_to_unmap(struct supp_page* spge, int advance)
+try_to_unmap(struct supp_page* spge, int advance, int write_length)
 {
   ASSERT(spge != NULL);
   
   struct thread* cur = thread_current();
-
+  // printf("type: %d\n", spge->type);
   switch(spge->type){
     case LAZY_LOAD:         /* Still a fake, unmapped page. So nothing to do*/
     {
@@ -289,11 +292,13 @@ try_to_unmap(struct supp_page* spge, int advance)
       ASSERT(kpage != NULL);
       struct frame* f = find_frame_table_entry_by_frame(kpage);
       ASSERT(f != NULL);
-
+      
       /* If the page to be unmapped is dirty, write it back to file */
       if(pagedir_is_dirty(cur->pagedir, spge->user_vaddr)
               || pagedir_is_dirty(cur->pagedir, kpage)){
-        file_write_at(spge->file_in_this_page, spge->user_vaddr, PGSIZE, advance);
+        // printf("dirty\n");
+        // printf("write_length: %d\n", write_length);
+        file_write_at(spge->file_in_this_page, spge->user_vaddr, write_length, advance);
       }
 
       free_frame(f);                                        /* Clear frame table entry */
