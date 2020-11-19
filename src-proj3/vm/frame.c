@@ -41,12 +41,15 @@ frame_init(struct frame* f, enum palloc_flags flag)
   f->frame_base = frame_base;
   if(frame_base == NULL){                     /* No more page can be allocated from memory */
     /* Need to do eviction */
-    printf("eviction\n");
     struct frame* victim_frame = next_frame_to_evict();
     size_t swap_idx = write_into_swap_space(victim_frame->user_vaddr);
-    printf("here\n");
-    success = try_to_evict(victim_frame, swap_idx);
     
+    success = try_to_evict(victim_frame, swap_idx);
+    if(success){
+      // alloc a new frame here.
+      frame_base = frame_allocation(flag);
+      f->frame_base = frame_base;
+    }
     goto done;
   }
 
@@ -175,8 +178,9 @@ next_frame_to_evict(void)
 bool
 try_to_evict(struct frame* f, size_t swap_idx)
 {
+  printf("try_to_evict\n");
   ASSERT(f != NULL);
-  ASSERT(f->frame_base != NULL && !is_kernel_vaddr(f->frame_base));
+  ASSERT(f->frame_base != NULL && is_kernel_vaddr(f->frame_base));
   ASSERT(f->pte != NULL);
   ASSERT(f->user_vaddr != NULL && is_user_vaddr(f->user_vaddr));
   ASSERT(f->allocator != NULL && f->allocator->magic == 0xcd6abf4b);
@@ -189,7 +193,7 @@ try_to_evict(struct frame* f, size_t swap_idx)
 
   struct supp_page* spge = find_fake_pte(&allocator_t->page_table, pg_round_down(f->user_vaddr));
   if(spge == NULL){     /* No corresponding supplemental page table entry */
-    if(!create_evicted_pte(allocator_t, swap_idx)){
+    if(!create_evicted_pte(allocator_t, swap_idx, f->user_vaddr)){
       goto done;
     }
   }

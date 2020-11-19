@@ -12,5 +12,6 @@ bool block_device_create(void);
 size_t next_start_to_swap(void);
 size_t write_into_swap_space(const void* dest);
 size_t read_from_swap_space(size_t start_sector, void* dest);
+void free_swap_slot(size_t swap_idx);
 
 #endif

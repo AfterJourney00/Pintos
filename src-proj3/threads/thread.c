@@ -525,6 +525,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
 #ifdef VM
   t->sp = NULL;                       /* Initialize the stack pointer as NULL*/
+  list_init(&t->mmap_file_list);      /* Initialize the memory-mapped file */
 #endif
 
   old_level = intr_disable ();

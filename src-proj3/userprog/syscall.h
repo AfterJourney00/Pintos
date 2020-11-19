@@ -33,10 +33,14 @@ void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
 
+mapid_t mmap(int fd, void *addr);
+void munmap (mapid_t mapping);
+
 /* Helper functions */
 int bad_ptr(const char* file);
 void clear_files(struct thread* t);
 bool is_request_extra_stack(void* ptr);
 bool grow_stack(void* ptr);
+struct mmap_file_des* find_map_by_id(mapid_t mapping);
 
 #endif /* userprog/syscall.h */

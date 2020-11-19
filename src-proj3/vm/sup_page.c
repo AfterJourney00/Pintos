@@ -55,7 +55,7 @@ find_fake_pte(struct hash *hash_table, void *key)
   }
 
 done:
-  return fake_pte;  
+  return fake_pte;
 }
 
 /* Create a supp_page entry(a reserved but not allocated page) */
@@ -77,11 +77,16 @@ supp_page_entry_create(enum supp_type type, struct file *file, off_t ofs, uint8_
 
     switch(spge->type){
       case LAZY_LOAD:
+      {
         entry_setting_lazy(spge, file, ofs, upage, read_bytes, zero_bytes, writable);
         break;
+      }
+        
       case CO_EXIST:
+      {
         entry_setting_co(spge, upage);
         break;
+      }
     }
 
     /* Insert this new entry into current process's sup-page-table */
@@ -104,7 +109,7 @@ entry_setting_lazy(struct supp_page* sup, struct file *file, off_t ofs, uint8_t 
                     uint32_t read_bytes, uint32_t zero_bytes, bool writable)
 {
   ASSERT(sup != NULL);            /* Assert the given sup_page_entry is not a NULL */
-
+  
   sup->user_vaddr = upage;
   sup->file_in_this_page = file;
   sup->load_offset = ofs;
@@ -112,6 +117,7 @@ entry_setting_lazy(struct supp_page* sup, struct file *file, off_t ofs, uint8_t 
   sup->zero_bytes = zero_bytes;
   sup->writable = writable;
   sup->fake_page = true;
+  sup->swap_idx = -1;
 
   return;
 }
@@ -126,8 +132,9 @@ entry_setting_co(struct supp_page* sup, uint8_t *upage)
   sup->load_offset = 0;
   sup->read_bytes = 0;
   sup->zero_bytes = 0;
-  sup->writable = false;
+  sup->writable = true;
   sup->fake_page = false;
+  sup->swap_idx = -1;
 
   return;
 }
@@ -137,7 +144,7 @@ fake2real_page_convert(struct supp_page* spge)
 {
   ASSERT(spge != NULL);
   ASSERT(spge->type == LAZY_LOAD);
-
+  
   uint8_t* upage = spge->user_vaddr; 
   struct file* loading_file = spge->file_in_this_page;
   off_t ofs = spge->load_offset;
@@ -147,33 +154,41 @@ fake2real_page_convert(struct supp_page* spge)
 
   ASSERT(upage != NULL);
   ASSERT(is_user_vaddr(upage));
-
+  
   file_seek(loading_file, ofs);
 
   bool success = false;
-
+  
   /* Get a page of memory(operations of 'load_segment in process.c') */
   struct frame* f = frame_create(PAL_USER);
   uint8_t *kpage = NULL;
   if(f == NULL){
+    // printf("1\n");
     goto done;
   }
   else{
+    // printf("2\n");
     kpage = f->frame_base;
+    // printf("f: %p\n", f);
+    // printf("kpage = f->frame_base = %p\n", kpage);
   }
   
   if(file_read(loading_file, kpage, read_bytes) != (int)read_bytes){
+    // printf("3\n");
     free_frame(f);
     goto done;
   }
   else{
+    // printf("4\n");
+    // printf("kpage: %p\n", kpage);
     memset(kpage + read_bytes, 0, zero_bytes);
+    // printf("zheli zheli\n");
     if(!pagedir_set_page(thread_current()->pagedir, upage, kpage, writable)){
       free_frame(f);
       goto done;
     }
   }
-
+  
   success = true;
   spge->fake_page = false;
   spge->type = CO_EXIST;
@@ -183,7 +198,7 @@ done:
 }
 
 bool
-create_evicted_pte(struct thread* t, size_t swap_idx)
+create_evicted_pte(struct thread* t, size_t swap_idx, void* uvaddr)
 {
   ASSERT(t != NULL && t->magic == 0xcd6abf4b);
 
@@ -195,6 +210,10 @@ create_evicted_pte(struct thread* t, size_t swap_idx)
   }
   spge->type = EVICTED;
   spge->swap_idx = swap_idx;
+  spge->writable = true;
+  spge->user_vaddr = (uint8_t*)uvaddr;
+
+  printf("created evicted sup pte: uva: %p", uvaddr);
 
   /* Insert this new entry into corresponding process's sup-page-table */
   struct hash_elem * he = hash_insert(&t->page_table, &spge->h_elem);
@@ -217,5 +236,104 @@ real2evicted_page_convert(struct supp_page* spge, size_t swap_idx)
   spge->type = EVICTED;
   spge->swap_idx = swap_idx;
 
+  return true;
+}
+
+bool
+try_to_do_reclaimation(struct supp_page* spge)
+{
+  ASSERT(spge->swap_idx != -1);
+
+  bool success = false;
+
+  /* New a frame (including possible eviction) */
+  struct frame* f = frame_create(PAL_USER);
+  if(f == NULL){
+    goto done;
+  }
+  // printf("writable? : %d\n", spge->writable);
+  // printf("spge->user_vaddr: %p\n", spge->user_vaddr);
+  if(!pagedir_set_page(thread_current()->pagedir, spge->user_vaddr, f->frame_base, spge->writable)){
+    free_frame(f);
+    goto done;
+  }
+  read_from_swap_space(spge->swap_idx, spge->user_vaddr);
+  spge->type = CO_EXIST;
+  spge->swap_idx = -1;
+
+  success = true;
+
+done:
+  return success;
+}
+
+bool
+try_to_unmap(struct supp_page* spge, int advance)
+{
+  ASSERT(spge != NULL);
+  
+  struct thread* cur = thread_current();
+
+  switch(spge->type){
+    case LAZY_LOAD:         /* Still a fake, unmapped page. So nothing to do*/
+    {
+      void* kpage = pagedir_get_page(cur->pagedir, spge->user_vaddr);
+      ASSERT(kpage == NULL);
+      break;
+    }
+
+    case CO_EXIST:          /* A mapped page, unmap it */
+    {
+      /* Retrieve the kpage and frame table entry */
+      void* kpage = pagedir_get_page(cur->pagedir, spge->user_vaddr);
+      ASSERT(kpage != NULL);
+      struct frame* f = find_frame_table_entry_by_frame(kpage);
+      ASSERT(f != NULL);
+
+      /* If the page to be unmapped is dirty, write it back to file */
+      if(pagedir_is_dirty(cur->pagedir, spge->user_vaddr)
+              || pagedir_is_dirty(cur->pagedir, kpage)){
+        file_write_at(spge->file_in_this_page, spge->user_vaddr, PGSIZE, advance);
+      }
+
+      free_frame(f);                                        /* Clear frame table entry */
+      pagedir_clear_page(cur->pagedir, spge->user_vaddr);   /* Unmap */
+
+      break;
+    }
+
+    case EVICTED:
+    {
+      /* If evicted, no kernel page can be found */
+      void* kpage = pagedir_get_page(cur->pagedir, spge->user_vaddr);
+      ASSERT(kpage == NULL);
+      struct frame* f = find_frame_table_entry_by_frame(kpage);
+      ASSERT(f == NULL);
+
+      /* If the page to be unmapped is dirty, reclaim it and write it back to file */
+      if(pagedir_is_dirty(cur->pagedir, spge->user_vaddr)){
+        if(!try_to_do_reclaimation(spge)){
+          return false;
+        }
+        file_write_at(spge->file_in_this_page, spge->user_vaddr, PGSIZE, advance);
+
+        /* Get the reclaimation kernel vaddr and frame table, free and unmap it */
+        kpage = pagedir_get_page(cur->pagedir, spge->user_vaddr);
+        ASSERT(kpage != NULL);
+        f = find_frame_table_entry_by_frame(kpage);
+        ASSERT(f != NULL);
+        free_frame(f);
+        pagedir_clear_page(cur->pagedir, spge->user_vaddr);
+      }
+      else{   /* If not dirty, clear the swap slot */
+        ASSERT(spge->swap_idx != -1);
+        free_swap_slot(spge->swap_idx);
+      }
+      break;
+    }
+  }
+
+  /* Remove the supplemental page table entry */
+  ASSERT(hash_delete(&cur->page_table, &spge->h_elem));
   return true;
 }

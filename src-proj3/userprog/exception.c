@@ -164,7 +164,7 @@ page_fault (struct intr_frame *f)
    if(!user){
       esp = (void*)thread_current()->sp;
    }
-
+   // printf("stack_pointer: %p\n", esp);
    struct supp_page* spage = NULL;
    
    /* If the fault address is NULL or a kernel address
@@ -178,16 +178,13 @@ page_fault (struct intr_frame *f)
       struct supp_page* spge = find_fake_pte(&thread_current()->page_table,
                                              pg_round_down(fault_addr));
       if(spge == NULL){             /* NO corresponding page */
-         if(!(fault_addr < USER_STACK_BASE || esp - fault_addr > 32)){
+         if(!(fault_addr < USER_STACK_BASE || esp - 32 > fault_addr)){
             /* Try to grow stack */
-            bool success = grow_stack(fault_addr);
-            if(!success){
+            if(!grow_stack(fault_addr)){
                // printf("exception error2\n");
                process_terminate();
             }
-            else{
-               return;
-            }
+            return;
          }
          else{
             // printf("exception error3\n");
@@ -195,15 +192,22 @@ page_fault (struct intr_frame *f)
          }
       }
       else{                         /* Corresponding page exists */
-         if(spge->fake_page){       /* This is a fake page */
+         if(spge->type == LAZY_LOAD){       /* This is a fake page */
             /* Try to lazy load, convert fake page to real page */
-            // printf("yizhi shi zhe ge\n");
-            fake2real_page_convert(spge);
+            if(!fake2real_page_convert(spge)){
+               // printf("exception error4\n");
+               process_terminate();
+            }
             return;
          }
-         else{                      /* impossible case */
-            // printf("exception error4\n");
-            process_terminate();
+         else{                      /* Need to reclaimation or impossible case */
+            // printf("Do reclaimation\n");
+            ASSERT(spge->type == EVICTED);
+            if(!try_to_do_reclaimation(spge)){
+               // printf("exception error5\n");
+               process_terminate();
+            }
+            return;
          }  
       }
    }
