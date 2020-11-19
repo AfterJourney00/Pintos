@@ -137,7 +137,6 @@ struct frame*
 find_frame_table_entry_by_frame(uint8_t* f)
 {
   /* Synchronization: ensure the whole finding is atomic */
-  lock_acquire(&frame_lock);
   struct frame* fe = NULL;
   for(struct list_elem* iter = list_begin(&frame_table);
                         iter != list_end(&frame_table);
@@ -147,7 +146,6 @@ find_frame_table_entry_by_frame(uint8_t* f)
       return fe;
     }
   }
-  lock_release(&frame_lock);
   return fe;
 }
 
