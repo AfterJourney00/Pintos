@@ -83,7 +83,7 @@ supp_page_entry_create(enum supp_type type, struct file *file, off_t ofs, uint8_
         
       case CO_EXIST:
       {
-        entry_setting_co(spge, upage);
+        entry_setting_co(spge, file, upage);
         break;
       }
     }
@@ -122,12 +122,12 @@ entry_setting_lazy(struct supp_page* sup, struct file *file, off_t ofs, uint8_t 
 }
 
 void
-entry_setting_co(struct supp_page* sup, uint8_t *upage)
+entry_setting_co(struct supp_page* sup, struct file* f, uint8_t *upage)
 {
   ASSERT(sup != NULL);            /* Assert the given sup_page_entry is not a NULL */
 
   sup->user_vaddr = upage;
-  sup->file_in_this_page = NULL;
+  sup->file_in_this_page = f;
   sup->load_offset = 0;
   sup->read_bytes = 0;
   sup->zero_bytes = 0;
@@ -162,27 +162,20 @@ fake2real_page_convert(struct supp_page* spge)
   struct frame* f = frame_create(PAL_USER);
   uint8_t *kpage = NULL;
   if(f == NULL){
-    // printf("1\n");
     goto done;
   }
   else{
-    // printf("2\n");
     kpage = f->frame_base;
-    // printf("f: %p\n", f);
-    // printf("kpage = f->frame_base = %p\n", kpage);
   }
   
   if(file_read(loading_file, kpage, read_bytes) != (int)read_bytes){
-    // printf("3\n");
     free_frame(f);
     goto done;
   }
   else{
-    // printf("4\n");
-    // printf("kpage: %p\n", kpage);
     memset(kpage + read_bytes, 0, zero_bytes);
-    // printf("zheli zheli\n");
     if(!pagedir_set_page(thread_current()->pagedir, upage, kpage, writable)){
+      printf("page set not success\n");
       free_frame(f);
       goto done;
     }
@@ -211,8 +204,6 @@ create_evicted_pte(struct thread* t, size_t swap_idx, void* uvaddr)
   spge->swap_idx = swap_idx;
   spge->writable = true;
   spge->user_vaddr = (uint8_t*)uvaddr;
-
-  printf("created evicted sup pte: uva: %p", uvaddr);
 
   /* Insert this new entry into corresponding process's sup-page-table */
   struct hash_elem * he = hash_insert(&t->page_table, &spge->h_elem);
@@ -252,13 +243,11 @@ try_to_do_reclaimation(struct supp_page* spge)
   if(f == NULL){
     goto done;
   }
-  // printf("writable? : %d\n", spge->writable);
-  // printf("spge->user_vaddr: %p\n", spge->user_vaddr);
   if(!pagedir_set_page(thread_current()->pagedir, spge->user_vaddr, f->frame_base, spge->writable)){
     free_frame(f);
     goto done;
   }
-  // printf("dao zhe li yinggai mei you wen ti\n");
+
   read_from_swap_space(spge->swap_idx, spge->user_vaddr);
   
   spge->type = CO_EXIST;
@@ -276,7 +265,7 @@ try_to_unmap(struct supp_page* spge, int advance, int write_length)
   ASSERT(spge != NULL);
   
   struct thread* cur = thread_current();
-  // printf("type: %d\n", spge->type);
+
   switch(spge->type){
     case LAZY_LOAD:         /* Still a fake, unmapped page. So nothing to do*/
     {
@@ -296,8 +285,6 @@ try_to_unmap(struct supp_page* spge, int advance, int write_length)
       /* If the page to be unmapped is dirty, write it back to file */
       if(pagedir_is_dirty(cur->pagedir, spge->user_vaddr)
               || pagedir_is_dirty(cur->pagedir, kpage)){
-        // printf("dirty\n");
-        // printf("write_length: %d\n", write_length);
         file_write_at(spge->file_in_this_page, spge->user_vaddr, write_length, advance);
       }
 

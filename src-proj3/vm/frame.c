@@ -12,11 +12,14 @@
 
 #define LATEST_CREATE_TIME 0xefffffff
 
+static struct list_elem *evict_entry;       /* A global ptr for clock algorithm */
+
 void
 initialize_frame_table(void)
 {
   list_init(&frame_table);
   lock_init(&frame_lock);
+  evict_entry = NULL;
   return;
 }
 
@@ -24,7 +27,7 @@ bool
 frame_init(struct frame* f, enum palloc_flags flag)
 {
   bool success = false;
-
+  
   /* Check the given ptr is valid or not */
   if(f == NULL){
     goto done;
@@ -34,26 +37,27 @@ frame_init(struct frame* f, enum palloc_flags flag)
   f->allocator = thread_current();
   f->pte = NULL;
   f->created_time = timer_ticks();
-  f->locked = false;
+  f->locked = true;
 
   /* Try to allocate a frame */
   uint8_t* frame_base = frame_allocation(flag);
   f->frame_base = frame_base;
-
+  
   if(frame_base == NULL){                     /* No more page can be allocated from memory */
     /* Need to do eviction */
-    struct frame* victim_frame = next_frame_to_evict();
+    struct frame* victim_frame = next_frame_to_evict();    
     size_t swap_idx = write_into_swap_space(victim_frame->user_vaddr);
     
     success = try_to_evict(victim_frame, swap_idx);
     if(success){
       // alloc a new frame here.
       frame_base = frame_allocation(flag);
+      ASSERT(frame_base != NULL);
       f->frame_base = frame_base;
     }
     goto done;
   }
-
+  
   success = true;
   
 done:
@@ -75,10 +79,11 @@ frame_create(enum palloc_flags flag)
     free_frame(f);
     return NULL;
   }
-
+  
   /* push the new frame into the frame table */
   lock_acquire(&frame_lock);
   list_push_back(&frame_table, &f->elem);
+  f->locked = false;
   lock_release(&frame_lock);
 
 done:
@@ -178,6 +183,7 @@ next_frame_to_evict(void)
     if(fe->created_time < create_time && !fe->locked){
       target_fe = fe;
       create_time = fe->created_time;
+      list_remove(&fe->elem);
     }
   }
 
@@ -217,7 +223,8 @@ try_to_evict(struct frame* f, size_t swap_idx)
   }
 
   pagedir_clear_page(allocator_t->pagedir, f->user_vaddr);
-  free_frame(f);
+  palloc_free_page(f->frame_base);
+  free(f);
   success = true;
 
 done:

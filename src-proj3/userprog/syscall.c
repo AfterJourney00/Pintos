@@ -19,7 +19,6 @@
 
 typedef int pid_t;
 
-struct lock file_lock;          /* Lock for file operations */
 static int global_fd = 1;       /* fd generator */
 struct list file_list;          /* List for storing all opened files */
 static uint32_t *stack_pointer; /* Functional stack pointer */
@@ -382,6 +381,7 @@ remove(const char* file)
 int
 open(const char* file)
 {
+  // printf("syscall open\n");
   /* Check the pointer is valid or not */
   if(bad_ptr(file)){
     exit(-1);
@@ -390,7 +390,6 @@ open(const char* file)
   /* Synchronization: only current thread access pointer file */
   lock_acquire(&file_lock);
 
-  // printf("file to open: %s\n", file);
   // printf("from syscall.c open(): \n");
   struct file *file_opened = filesys_open(file); 
   struct file_des* des;
@@ -431,8 +430,6 @@ filesize(int fd)
 int
 read(int fd, void *buffer, unsigned size)
 {
-  // printf("reading\n");
-  // printf("size: %d\n", size);
   /* First check the buffer is a bad ptr or not */
   if(buffer == NULL || !is_user_vaddr(buffer)){
     
@@ -527,6 +524,7 @@ read(int fd, void *buffer, unsigned size)
 int
 write(int fd, const void *buffer, unsigned size)
 {
+  // printf("write?\n");
   /* First check the buffer is a bad ptr or not */
   if(bad_ptr(buffer)){
     exit(-1);

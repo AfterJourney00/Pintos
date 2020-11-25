@@ -6,6 +6,8 @@
 
 typedef int pid_t;
 
+struct lock file_lock;          /* Lock for file operations */
+
 /* File descriptor */
 struct file_des
 {

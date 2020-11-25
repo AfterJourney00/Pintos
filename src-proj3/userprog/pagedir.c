@@ -51,23 +51,9 @@ pagedir_destroy (uint32_t *pd)
             free_frame(fe);
             /* ******New******* */
           }
-        /* ******Old******* */
         palloc_free_page (pt);
-        /* ******Old******* */
-
-        /* ******New******* */
-        // struct frame* fe = find_frame_table_entry_by_frame(pt);
-        // free_frame(fe);
-        /* ******New******* */
       }
-  /* ******Old******* */
   palloc_free_page (pd);
-  /* ******Old******* */
-
-  /* ******New******* */
-  // struct frame* fe = find_frame_table_entry_by_frame(pd);
-  // free_frame(fe);
-  /* ******New******* */
 }
 
 /* Returns the address of the page table entry for virtual

@@ -18,12 +18,12 @@ test_main (void)
 {
   pid_t children[CHILD_CNT];
   int fd;
-
+  
   CHECK (create (file_name, sizeof buf1), "create \"%s\"", file_name);
-
+  
   exec_children ("child-syn-wrt", children, CHILD_CNT);
   wait_children (children, CHILD_CNT);
-
+  
   CHECK ((fd = open (file_name)) > 1, "open \"%s\"", file_name);
   CHECK (read (fd, buf1, sizeof buf1) > 0, "read \"%s\"", file_name);
   random_bytes (buf2, sizeof buf2);

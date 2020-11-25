@@ -41,8 +41,9 @@ process_execute (const char *file_name)
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
-  if (fn_copy == NULL)
+  if (fn_copy == NULL){
     return TID_ERROR;
+  }
   strlcpy (fn_copy, file_name, PGSIZE);
   
   /* Make another copy for parsing since FILE_NAME is a const one */
@@ -52,7 +53,7 @@ process_execute (const char *file_name)
     return TID_ERROR;
   }
   strlcpy (fn_for_parse, file_name, PGSIZE);
-
+  
   /* Parse file_name to have exec_name. */
   /* For example: 'args-single onearg' ===> 'args-single' & 'onearg' */
   exec_name = strtok_r(fn_for_parse, " ", &save_ptr);
@@ -84,7 +85,7 @@ process_execute (const char *file_name)
     palloc_free_page (fn_copy);
     return TID_ERROR;
   }
-  
+
   /* Synchronization: use condition variable to wait child thread */
   lock_acquire(&(cur->loading_lock));
   while(!t->isloaded){
@@ -153,7 +154,7 @@ start_process (void *file_name_)
   else{
     cur->isloaded = -1;    /* load fail: set isloaded to -1 */ 
   }
-
+  
   if(cur->parent_t != NULL){
     /* Synchronization: loading finished, broadcast the condition variable */
     lock_acquire(&(cur->parent_t->loading_lock));
@@ -180,7 +181,7 @@ start_process (void *file_name_)
 }
 
 /* Waits for thread TID to die and returns its exit status.  If
-   it was terminated by the kernel (i.e. killed due to an
+   it was terminated by the kernel (i.e. killedsort chunk 0 due to an
    exception), returns -1.  If TID is invalid or if it was not a
    child of the calling process, or if process_wait() has already
    been successfully called for the given TID, returns -1
@@ -306,6 +307,7 @@ process_exit (void)
     iter = list_next(iter);
     munmap(mfds->id);
   }
+
 #endif
   
   if(cur->parent_t != NULL){
@@ -336,8 +338,10 @@ process_exit (void)
   /* Clear all files opened by current thread */
   clear_files(cur);
 
+  #ifdef VM
   /* Clear this process's page table */
   hash_destroy(&cur->page_table, free_page_table_entry);
+  #endif
 }
 
 /* Sets up the CPU for running user code in the current
@@ -441,16 +445,18 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
   off_t file_ofs;
   bool success = false;
   int i;
-
+  
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create ();
   if (t->pagedir == NULL){
     goto done;
   }
   process_activate ();
-  // printf("loading file_name is: %s\n", file_name[0]);
+
+  lock_acquire(&file_lock);
   /* Open executable file. */
   file = filesys_open (file_name[0]);
+  lock_release(&file_lock);
   if (file == NULL) 
     {
       printf ("load: %s: open failed\n", file_name[0]);
@@ -463,7 +469,7 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
 
   /* Deny writes to executable */
   file_deny_write (file);
-
+  
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -476,7 +482,7 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
       printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
-
+  
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
   for (i = 0; i < ehdr.e_phnum; i++) 
@@ -526,6 +532,7 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
                   read_bytes = 0;
                   zero_bytes = ROUND_UP (page_offset + phdr.p_memsz, PGSIZE);
                 }
+
               if (!lazy_load (file, file_page, (void *) mem_page,
                                  read_bytes, zero_bytes, writable)){
                 goto done;
@@ -623,7 +630,7 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
   ASSERT ((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT (pg_ofs (upage) == 0);
   ASSERT (ofs % PGSIZE == 0);
-
+  
   file_seek (file, ofs);
   while (read_bytes > 0 || zero_bytes > 0) 
     {
@@ -632,6 +639,12 @@ load_segment (struct file *file, off_t ofs, uint8_t *upage,
          and zero the final PAGE_ZERO_BYTES bytes. */
       size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
       size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+      ASSERT (pagedir_get_page(thread_current()->pagedir, upage) == NULL);
+      if(!supp_page_entry_create(CO_EXIST, file, ofs, upage, page_read_bytes, 
+                                                      page_zero_bytes, writable)){
+        return false;
+      }
 
       /* Get a page of memory. */
       struct frame* f = frame_create(PAL_USER);
@@ -681,6 +694,7 @@ static bool lazy_load (struct file *file, off_t ofs, uint8_t *upage,
     size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
+    ASSERT (pagedir_get_page(thread_current()->pagedir, upage) == NULL);
     if(!supp_page_entry_create(LAZY_LOAD, file, ofs, upage, page_read_bytes, 
                                                       page_zero_bytes, writable)){
       return false;

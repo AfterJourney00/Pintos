@@ -45,7 +45,7 @@ bool supp_page_entry_create(enum supp_type type, struct file *file, off_t ofs, u
                             uint32_t read_bytes, uint32_t zero_bytes, bool writable);
 void entry_setting_lazy(struct supp_page* sup, struct file *file, off_t ofs, uint8_t *upage,
                               uint32_t read_bytes, uint32_t zero_bytes, bool writable);
-void entry_setting_co(struct supp_page* sup, uint8_t *upage);
+void entry_setting_co(struct supp_page* sup, struct file* f, uint8_t *upage);
 
 /* Auxilary functionality for other parts */
 struct supp_page* find_fake_pte(struct hash *hash_table, void *key);

@@ -194,7 +194,6 @@ page_fault (struct intr_frame *f)
       else{                         /* Corresponding page exists */
          if(spge->type == LAZY_LOAD){       /* This is a fake page */
             /* Try to lazy load, convert fake page to real page */
-            // printf("here\n");
             if(!fake2real_page_convert(spge)){
                // printf("exception error4\n");
                process_terminate();
