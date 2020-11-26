@@ -283,8 +283,7 @@ try_to_unmap(struct supp_page* spge, int advance, int write_length)
       ASSERT(f != NULL);
       
       /* If the page to be unmapped is dirty, write it back to file */
-      if(pagedir_is_dirty(cur->pagedir, spge->user_vaddr)
-              || pagedir_is_dirty(cur->pagedir, kpage)){
+      if(pagedir_is_dirty(cur->pagedir, spge->user_vaddr)){
         file_write_at(spge->file_in_this_page, spge->user_vaddr, write_length, advance);
       }
 
