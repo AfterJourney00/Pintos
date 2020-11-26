@@ -12,14 +12,11 @@
 
 #define LATEST_CREATE_TIME 0xefffffff
 
-static struct list_elem *evict_entry;       /* A global ptr for clock algorithm */
-
 void
 initialize_frame_table(void)
 {
   list_init(&frame_table);
   lock_init(&frame_lock);
-  evict_entry = NULL;
   return;
 }
 
@@ -50,7 +47,7 @@ frame_init(struct frame* f, enum palloc_flags flag)
     
     success = try_to_evict(victim_frame, swap_idx);
     if(success){
-      // alloc a new frame here.
+      /* alloc a new frame here. */
       frame_base = frame_allocation(flag);
       ASSERT(frame_base != NULL);
       f->frame_base = frame_base;
@@ -183,11 +180,11 @@ next_frame_to_evict(void)
     if(fe->created_time < create_time && !fe->locked){
       target_fe = fe;
       create_time = fe->created_time;
-      list_remove(&fe->elem);
     }
   }
 
   if(target_fe != NULL){
+    list_remove(&target_fe->elem);
     target_fe->locked = true;
   }
 

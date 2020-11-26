@@ -175,7 +175,6 @@ fake2real_page_convert(struct supp_page* spge)
   else{
     memset(kpage + read_bytes, 0, zero_bytes);
     if(!pagedir_set_page(thread_current()->pagedir, upage, kpage, writable)){
-      printf("page set not success\n");
       free_frame(f);
       goto done;
     }
@@ -222,8 +221,7 @@ real2evicted_page_convert(struct supp_page* spge, size_t swap_idx)
 {
   ASSERT(spge != NULL);
   ASSERT(spge->type == CO_EXIST);
-  // printf("real2evicted_page_convert, uvaddr = %p\n", spge->user_vaddr);
-  // printf("zhe ge page ke bu ke yi xie?: %d\n", spge->writable);
+  
   spge->type = EVICTED;
   spge->swap_idx = swap_idx;
   spge->writable = true;
@@ -248,13 +246,14 @@ try_to_do_reclaimation(struct supp_page* spge)
     goto done;
   }
 
+  f->locked = true;
   read_from_swap_space(spge->swap_idx, spge->user_vaddr);
   
   spge->type = CO_EXIST;
   spge->swap_idx = -1;
 
   success = true;
-
+  f->locked = false;
 done:
   return success;
 }

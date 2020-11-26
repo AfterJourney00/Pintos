@@ -39,7 +39,8 @@ struct exit_code_list_element{
 
 #ifdef VM
 typedef int mapid_t;
-struct mmap_file_des{
+struct mmap_file_des
+{
    mapid_t id;                         /* Id of this memory-mapped file */
    struct file* file_ptr;               /* Pointer of this memory-mapped file */
    void* mapped_addr;                   /* Start address of the mapped memory */

@@ -102,7 +102,6 @@ grow_stack(void* ptr)
     goto done;
   }
   else{
-    // success = install_page(pg_round_down(ptr), fe->frame_base, true);
     success = pagedir_set_page(thread_current()->pagedir, pg_round_down(ptr), fe->frame_base, true);
     if(!success){
       free_frame(fe);
@@ -381,7 +380,6 @@ remove(const char* file)
 int
 open(const char* file)
 {
-  // printf("syscall open\n");
   /* Check the pointer is valid or not */
   if(bad_ptr(file)){
     exit(-1);
@@ -390,7 +388,6 @@ open(const char* file)
   /* Synchronization: only current thread access pointer file */
   lock_acquire(&file_lock);
 
-  // printf("from syscall.c open(): \n");
   struct file *file_opened = filesys_open(file); 
   struct file_des* des;
 
@@ -403,11 +400,9 @@ open(const char* file)
     list_push_back(&file_list, &(des->filelem)); /* Push this descriptor into list */
 
     lock_release(&file_lock);
-    // printf("global_fd: %d\n", global_fd);
     return global_fd;
   }
   else{
-    // printf("open_error2\n");
     lock_release(&file_lock);
     return -1;
   }
@@ -432,7 +427,6 @@ read(int fd, void *buffer, unsigned size)
 {
   /* First check the buffer is a bad ptr or not */
   if(buffer == NULL || !is_user_vaddr(buffer)){
-    
     exit(-1);
   }
   else{
@@ -443,8 +437,6 @@ read(int fd, void *buffer, unsigned size)
       
       /* Check the validity of pointer */
       if(ptr == NULL || !is_user_vaddr(ptr)){
-        // printf("error1\n");
-        // printf("ptr: %p\n", ptr);
         exit(-1);
       }
 
@@ -457,10 +449,6 @@ read(int fd, void *buffer, unsigned size)
             grow_stack(ptr);                /* Need to grow stack */
           }
           else{
-            // printf("ptr: %p\n", ptr);
-            // printf("stack_pointer: %p\n", stack_pointer);
-            // printf("error2\n");
-            // printf("sp - ptr: %u\n", (unsigned)stack_pointer - (unsigned)ptr);
             exit(-1);
           }
         }
@@ -469,7 +457,6 @@ read(int fd, void *buffer, unsigned size)
             fake2real_page_convert(pte);    /* Allocate space for this, lazy load */
           }
           else{                             /* Impossible real page but not found */
-            // printf("error3\n");
             exit(-1);
           }
         }
@@ -488,7 +475,6 @@ read(int fd, void *buffer, unsigned size)
     }
   }
   
-
   struct file_des* f;
   int success = 0;
 
@@ -524,7 +510,6 @@ read(int fd, void *buffer, unsigned size)
 int
 write(int fd, const void *buffer, unsigned size)
 {
-  // printf("write?\n");
   /* First check the buffer is a bad ptr or not */
   if(bad_ptr(buffer)){
     exit(-1);
@@ -695,7 +680,7 @@ mmap(int fd, void *addr)
   mf_des->id = id;
   mf_des->file_ptr = file_copy;
   mf_des->mapped_addr = addr;
-  mf_des->length = length;        /* Discard the 'spilled out' zeros*/
+  mf_des->length = length;
   list_push_back(&thread_current()->mmap_file_list, &mf_des->elem);
 
 done:

@@ -718,17 +718,11 @@ setup_stack (void **esp, char **argv, int argc)
   /* esp is the pointer pointing to stack pointer, *esp is the stack pointer */
   uint8_t *kpage = NULL;
   bool success = false;
-  
-  /* ******Old****** */
-  // kpage = palloc_get_page (PAL_USER | PAL_ZERO);
-  /* ******Old****** */
 
-  /* ******New****** */
   struct frame* f = frame_create(PAL_USER | PAL_ZERO);
   if(f != NULL){
     kpage = f->frame_base;
   }
-  /* ******New****** */
 
   if (kpage != NULL) 
     {
@@ -785,7 +779,6 @@ setup_stack (void **esp, char **argv, int argc)
         #endif
       }
       else{
-        // palloc_free_page (kpage);
         free_frame(f);
       }
     }

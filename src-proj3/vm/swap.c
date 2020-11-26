@@ -48,11 +48,9 @@ write_into_swap_space(void* dest)
   /* Choose a start of a consecutive page-sized space to write */
   size_t next_start = next_start_to_swap();
   ASSERT(next_start != BITMAP_ERROR);
-  // printf("write_into_swap_space\n");
 
   /* Write to this page-sized space 8 times(512 bytes per time) */
   for(int i = 0; i < SECTORS_PER_PAGE; i++){
-    // printf("write addr: %p\n", dest + (i * SIZE_PER_SECTOR));
     block_write(block_device, next_start * SECTORS_PER_PAGE + i, dest + (i * SIZE_PER_SECTOR));
   }
   

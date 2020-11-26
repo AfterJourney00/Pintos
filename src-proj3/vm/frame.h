@@ -14,8 +14,6 @@ struct lock frame_lock;
 /* Frame */
 struct frame{
   uint8_t *frame_base;          /* Base address */
-  // struct lock f_lock;           /* Lock per frame */
-  // tid_t allocator;              /* The frame's allocator */
   struct thread* allocator;     /* The frame's allocator */
   uint32_t *pte;                /* Record the corresponding page table entry */
   int64_t created_time;         /* Record the time this frame is created */
