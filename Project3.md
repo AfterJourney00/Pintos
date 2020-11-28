@@ -326,9 +326,6 @@ struct list mmap_file_list;             /* Memory-maped file list */
 
   swap page is a page that is chosen by some process to evict, and should be written into swap space through block device. Other pages may be a non-present page, which may should be loaded*(lazy load, memory mapped files)* or should be retrieved from swap space to memory.
 
-- 
-
-  
 
 
 
