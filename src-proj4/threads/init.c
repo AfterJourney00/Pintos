@@ -28,8 +28,6 @@
 #include "userprog/gdt.h"
 #include "userprog/syscall.h"
 #include "userprog/tss.h"
-#include "vm/frame.h"
-#include "vm/swap.h"
 #else
 #include "tests/threads/tests.h"
 #endif
@@ -117,10 +115,6 @@ main (void)
   syscall_init ();
 #endif
 
-#ifdef VM
-  initialize_frame_table();
-#endif
-
   /* Start thread scheduler and enable interrupts. */
   thread_start ();
   serial_init_queue ();
@@ -131,10 +125,6 @@ main (void)
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
-#endif
-
-#ifdef VM
-  block_device_create();
 #endif
 
   printf ("Boot complete.\n");

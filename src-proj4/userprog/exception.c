@@ -6,15 +6,11 @@
 #include "threads/thread.h"
 #include "userprog/syscall.h"
 
-/* The lowest address of user stack */
-#define USER_STACK_BASE 0x08048000
-
 /* Number of page faults processed. */
 static long long page_fault_cnt;
 
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
-void process_terminate(void);
 
 /* Registers handlers for interrupts that can be caused by user
    programs.
@@ -127,109 +123,56 @@ kill (struct intr_frame *f)
 static void
 page_fault (struct intr_frame *f) 
 {
-   // printf("initial esp: %p\n", esp);
-   bool not_present;  /* True: not-present page, false: writing r/o page. */
-   bool write;        /* True: access was write, false: access was read. */
-   bool user;         /* True: access by user, false: access by kernel. */
-   void *fault_addr;  /* Fault address. */
+  bool not_present;  /* True: not-present page, false: writing r/o page. */
+  bool write;        /* True: access was write, false: access was read. */
+  bool user;         /* True: access by user, false: access by kernel. */
+  void *fault_addr;  /* Fault address. */
 
-   /* Obtain faulting address, the virtual address that was
+  /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
      data.  It is not necessarily the address of the instruction
      that caused the fault (that's f->eip).
      See [IA32-v2a] "MOV--Move to/from Control Registers" and
      [IA32-v3a] 5.15 "Interrupt 14--Page Fault Exception
      (#PF)". */
-   asm ("movl %%cr2, %0" : "=r" (fault_addr));
+  asm ("movl %%cr2, %0" : "=r" (fault_addr));
 
-   /* Turn interrupts back on (they were only off so that we could
+  /* Turn interrupts back on (they were only off so that we could
      be assured of reading CR2 before it changed). */
-   intr_enable ();
+  intr_enable ();
 
-   /* Count page faults. */
-   page_fault_cnt++;
+  /* Count page faults. */
+  page_fault_cnt++;
 
-   /* Determine cause. */
-   not_present = (f->error_code & PF_P) == 0;
-   write = (f->error_code & PF_W) != 0;
-   user = (f->error_code & PF_U) != 0;
-   
+  /* Determine cause. */
+  not_present = (f->error_code & PF_P) == 0;
+  write = (f->error_code & PF_W) != 0;
+  user = (f->error_code & PF_U) != 0;
+
+  if(bad_ptr(fault_addr)){
    // printf ("Page fault at %p: %s error %s page in %s context.\n",
-   //       fault_addr,
-   //       not_present ? "not present" : "rights violation",
-   //       write ? "writing" : "reading",
-   //       user ? "user" : "kernel");
+   //        fault_addr,
+   //        not_present ? "not present" : "rights violation",
+   //        write ? "writing" : "reading",
+   //        user ? "user" : "kernel");
 
-   void* esp = f->esp;
-   if(!user){
-      esp = (void*)thread_current()->sp;
-   }
-   // printf("stack_pointer: %p\n", esp);
-   struct supp_page* spage = NULL;
-   
-   /* If the fault address is NULL or a kernel address
-    or the fault is not non-present fault,  terminate process*/
-   if(fault_addr == NULL || !is_user_vaddr(fault_addr) || !not_present){
-      // printf("exception error1\n");
-      process_terminate();
-   }
-   else{
-      /* Check whether this is a lazy load */
-      struct supp_page* spge = find_fake_pte(&thread_current()->page_table,
-                                             pg_round_down(fault_addr));
-      if(spge == NULL){             /* NO corresponding page */
-         if(!(fault_addr < USER_STACK_BASE || esp - 32 > fault_addr)){
-            /* Try to grow stack */
-            if(!grow_stack(fault_addr)){
-               // printf("exception error2\n");
-               process_terminate();
-            }
-            return;
-         }
-         else{
-            // printf("exception error3\n");
-            process_terminate();
-         }
-      }
-      else{                         /* Corresponding page exists */
-         if(spge->type == LAZY_LOAD){       /* This is a fake page */
-            /* Try to lazy load, convert fake page to real page */
-            if(!fake2real_page_convert(spge)){
-               // printf("exception error4\n");
-               process_terminate();
-            }
-            return;
-         }
-         else{                      /* Need to reclaimation or impossible case */
-            // printf("Do reclaimation\n");
-            ASSERT(spge->type == EVICTED);
-            // printf("ke bu ke yi write ne?: %d\n", spge->writable);
-            if(!try_to_do_reclaimation(spge)){
-               // printf("exception error5\n");
-               process_terminate();
-            }
-            // printf("reclaimation finish\n");
-            return;
-         }  
-      }
-   }
 
-   /* To implement virtual memory, delete the rest of the function
+   struct thread *cur = thread_current();
+   cur->exit_code = -1;
+   enum intr_level old_level = intr_disable();
+   printf ("%s: exit(%d)\n", cur->name, -1);
+   intr_set_level (old_level);
+  
+   thread_exit();
+  }
+
+  /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to
      which fault_addr refers. */
-   printf ("Page fault at %p: %s error %s page in %s context.\n",
-         fault_addr,
-         not_present ? "not present" : "rights violation",
-         write ? "writing" : "reading",
-         user ? "user" : "kernel");
-   kill (f);
-}
-
-void
-process_terminate(void)
-{
-  struct thread *cur = thread_current();
-  cur->exit_code = -1;
-  printf ("%s: exit(%d)\n", cur->name, -1);
-  thread_exit();
+  printf ("Page fault at %p: %s error %s page in %s context.\n",
+          fault_addr,
+          not_present ? "not present" : "rights violation",
+          write ? "writing" : "reading",
+          user ? "user" : "kernel");
+  kill (f);
 }

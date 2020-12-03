@@ -5,9 +5,6 @@
 #include <list.h>
 #include <stdint.h>
 #include "threads/synch.h"
-#include "lib/kernel/hash.h"
-#include "vm/sup_page.h"
-
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -36,18 +33,6 @@ struct exit_code_list_element{
    int thread_exit_code;                /* The corresponding thread's exit_code*/
    struct list_elem elem;               /* Element for list */
 };
-
-#ifdef VM
-typedef int mapid_t;
-struct mmap_file_des
-{
-   mapid_t id;                         /* Id of this memory-mapped file */
-   struct file* file_ptr;               /* Pointer of this memory-mapped file */
-   void* mapped_addr;                   /* Start address of the mapped memory */
-   int length;                          /* Valid length of the mapped memory */      
-   struct list_elem elem;               /* Element for list */
-};
-#endif
 
 /* A kernel thread or user process.
 
@@ -131,14 +116,8 @@ struct thread
     int waited;                         /* Record the thread waited, not waited, or terminated */
     bool exited;                        /* Record whether the thread is exited */
     int exit_code;                      /* The exit code returned when the thread exits */
-    struct list children_exit_code_list;/* A list used to record children threads' exit code*/  
+    struct list children_exit_code_list;/* A list used to record children threads' exit code*/
 #endif
-
-#ifdef VM
-    struct hash page_table;             /* Page table of this thread(process) */
-    struct list mmap_file_list;         /* Memory-maped file list */
-    uint8_t* sp;                        /* Record the stack pointer of the thread */
-#endif 
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */

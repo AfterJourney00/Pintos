@@ -13,15 +13,12 @@
 #include "threads/malloc.h"
 #include "devices/input.h"
 #include "threads/synch.h"
-#include "vm/sup_page.h"
-
-#define USER_STACK_BASE 0x08048000
 
 typedef int pid_t;
 
+struct lock file_lock;          /* Lock for file operations */
 static int global_fd = 1;       /* fd generator */
 struct list file_list;          /* List for storing all opened files */
-static uint32_t *stack_pointer; /* Functional stack pointer */
 
 static void syscall_handler (struct intr_frame *);
 
@@ -85,65 +82,11 @@ clear_files(struct thread* t)
   return;
 }
 
-/* Function foe condition check of stack growth */
-bool
-is_request_extra_stack(void* ptr)
-{
-  return !(ptr < USER_STACK_BASE || (void*)stack_pointer - 32 > ptr);
-}
-
-/* Function for stack growing */
-bool
-grow_stack(void* ptr)
-{
-  bool success = false;
-  struct frame* fe = frame_create(PAL_USER | PAL_ZERO);
-  if(fe == NULL){
-    goto done;
-  }
-  else{
-    success = pagedir_set_page(thread_current()->pagedir, pg_round_down(ptr), fe->frame_base, true);
-    if(!success){
-      free_frame(fe);
-    }
-    else{
-      /* Create a corresponding supplemental page table */
-      success = supp_page_entry_create(CO_EXIST, NULL, 0, ptr, 0, 0, true);
-    }
-  }
-
-done:
-  return success;
-}
-
-/* Find mapping according to given id */
-struct mmap_file_des*
-find_map_by_id(mapid_t mapping)
-{
-  struct thread* cur = thread_current();
-  struct mmap_file_des* target = NULL;
-
-  for(struct list_elem* iter = list_begin(&cur->mmap_file_list);
-                        iter != list_end(&cur->mmap_file_list);
-                        iter = list_next(iter)){
-    struct mmap_file_des* tmp = list_entry(iter, struct mmap_file_des, elem);
-    if(tmp->id == mapping){
-      target = tmp;
-      break;
-    }
-  }
-
-  return target;
-}
-
 
 /* Syscall handler */
 static void
 syscall_handler (struct intr_frame *f) 
 {
-  stack_pointer = f->esp;
-  thread_current()->sp = stack_pointer;
-
   /* Check the interrupt stack valid or not */
   if(bad_ptr(f->esp) || bad_ptr((int*)(f->esp) + 1)
                      || bad_ptr((int*)(f->esp) + 2)
@@ -253,7 +196,6 @@ syscall_handler (struct intr_frame *f)
 
     case SYS_SEEK:
     {
-      /* parse the arguments first */
       int fd = *((int*)(f->esp) + 1);
       unsigned position = *((unsigned*)(f->esp) + 2);
 
@@ -267,25 +209,6 @@ syscall_handler (struct intr_frame *f)
       int fd = *((int*)(f->esp) + 1);
 
       close(fd);
-      break;
-    }
-
-    case SYS_MMAP:
-    {
-      /* parse the arguments first */
-      int fd = *((int*)(f->esp) + 1);
-      void* addr = (void*)*((int*)(f->esp) + 2);
-
-      f->eax = mmap(fd, addr);
-      break;
-    }
-
-    case SYS_MUNMAP:
-    {
-      /* parse the arguments first */
-      int id = *((int*)(f->esp) + 1);
-
-      munmap(id);
       break;
     }
   }
@@ -384,7 +307,7 @@ open(const char* file)
   if(bad_ptr(file)){
     exit(-1);
   }  
-  
+
   /* Synchronization: only current thread access pointer file */
   lock_acquire(&file_lock);
 
@@ -400,6 +323,7 @@ open(const char* file)
     list_push_back(&file_list, &(des->filelem)); /* Push this descriptor into list */
 
     lock_release(&file_lock);
+
     return global_fd;
   }
   else{
@@ -426,53 +350,8 @@ int
 read(int fd, void *buffer, unsigned size)
 {
   /* First check the buffer is a bad ptr or not */
-  if(buffer == NULL || !is_user_vaddr(buffer)){
+  if(bad_ptr(buffer)){
     exit(-1);
-  }
-  else{
-    unsigned advance = PGSIZE;
-    int size_copy = (int)size;
-    
-    for(void* ptr = buffer; ptr != NULL; ptr += advance){
-      
-      /* Check the validity of pointer */
-      if(ptr == NULL || !is_user_vaddr(ptr)){
-        exit(-1);
-      }
-
-      /* Check whether we need to load a fake page */
-      if(!pagedir_get_page(thread_current()->pagedir, ptr)){
-        /* Check the file user request is a fake_pte or not */
-        struct supp_page* pte = find_fake_pte(&thread_current()->page_table, pg_round_down(ptr));
-        if(pte == NULL){                    /* If no supplemental information stored */
-          if(is_request_extra_stack(ptr)){
-            grow_stack(ptr);                /* Need to grow stack */
-          }
-          else{
-            exit(-1);
-          }
-        }
-        else{                               /* If supplemental information exists */
-          if(pte->fake_page){               /* If this is a fake page */
-            fake2real_page_convert(pte);    /* Allocate space for this, lazy load */
-          }
-          else{                             /* Impossible real page but not found */
-            exit(-1);
-          }
-        }
-      }
-
-      size_copy -= PGSIZE;
-      if(size_copy <= 0){
-        break;
-      }
-      else if(size_copy - PGSIZE <= 0){
-        advance = PGSIZE - size_copy;
-      }
-      else{
-        advance = PGSIZE;
-      }
-    }
   }
   
   struct file_des* f;
@@ -609,124 +488,5 @@ close(int fd)
 
 done:
   lock_release(&file_lock);
-  return;
-}
-
-/* syscall: MMAP */
-mapid_t
-mmap(int fd, void *addr)
-{
-  ASSERT(is_user_vaddr(addr));
-
-  mapid_t id = -1;
-
-  /* Check the given parameters' validity */
-  if(fd <= 1 || addr == NULL || pg_ofs(addr) != 0){
-    return -1;
-  }
-
-  lock_acquire(&file_lock);
-  
-  /* Find the size of corresponding file */
-  struct file_des *des = find_des_by_fd(fd);
-  if(des == NULL || des->file_ptr == NULL || des->size <= 0){
-    goto done;
-  }
-  int length = des->size;
-
-  struct file* file_copy = file_reopen(des->file_ptr);
-  if(file_copy == NULL){
-    goto done;
-  }
-  ASSERT(length == file_length(file_copy));
-
-  /* Check whether overlapping mapped memory exists */
-  for(int advance = 0; advance < length; advance += PGSIZE){
-    if(find_fake_pte(&thread_current()->page_table, pg_round_down(addr + advance))){
-      goto done;
-    }
-  }
-
-  uint32_t zero_bytes;
-  uint32_t read_bytes;
-  if(length <= PGSIZE){
-    read_bytes = length;
-    zero_bytes = PGSIZE - read_bytes;
-    if(!supp_page_entry_create(LAZY_LOAD, file_copy, 0, addr, read_bytes, zero_bytes, true)){
-      goto done;
-    }
-  }
-  else{
-    zero_bytes = (uint32_t)length % (uint32_t)PGSIZE;
-    read_bytes = (uint32_t)length - (uint32_t)zero_bytes;
-   
-    /* Lazy load */
-    int i = 0;
-    for(i = 0; i < read_bytes / PGSIZE; i++){
-      if(!supp_page_entry_create(LAZY_LOAD, file_copy, i * PGSIZE, addr + i * PGSIZE,
-                                  PGSIZE, 0, true)){
-        goto done;
-      }
-    }
-    if(!supp_page_entry_create(LAZY_LOAD, file_copy, i * PGSIZE, addr + i * PGSIZE,
-                                  PGSIZE - zero_bytes, zero_bytes, true)){
-      goto done;
-    }
-  }
-
-  /* Generate a mapid */
-  id = list_size(&thread_current()->mmap_file_list);
-  struct mmap_file_des* mf_des = malloc(sizeof(struct mmap_file_des));
-  mf_des->id = id;
-  mf_des->file_ptr = file_copy;
-  mf_des->mapped_addr = addr;
-  mf_des->length = length;
-  list_push_back(&thread_current()->mmap_file_list, &mf_des->elem);
-
-done:
-  lock_release(&file_lock);
-  return id;
-}
-
-void
-munmap (mapid_t mapping)
-{
-  ASSERT(mapping >= 0);     /* Assert that the given mapping id is a valid one */
-  
-  /* Find the corresponding mapping from this process */
-  struct mmap_file_des* mf_des = find_map_by_id(mapping);
-  if(mf_des == NULL){
-    exit(-1);
-  }
-  
-  /* Find all supplemental page table entries belonging to this mapping */
-  struct file* unmapping_file = mf_des->file_ptr;
-  int length = mf_des->length;
-  void* start_ptr = mf_des->mapped_addr;
-
-  ASSERT(pg_round_down(start_ptr) == start_ptr);
-
-  lock_acquire(&file_lock);
-  
-  for(int advance = 0; advance < length; advance += PGSIZE){
-    struct supp_page* spge = find_fake_pte(&thread_current()->page_table, start_ptr + advance);
-    int write_length = PGSIZE;
-    if(advance + PGSIZE > length){
-      write_length = length - advance;
-    }
-    if(!try_to_unmap(spge, advance, write_length)){  /* Try to unmap this spge */
-      exit(-1);
-    }  
-    free(spge);                       /* Free the supplemental page table entry*/
-  }
-  
-  /* Close the file and clear the memory mapped file descriptor */
-  file_close(mf_des->file_ptr);
-  list_remove(&mf_des->elem);
-
-  lock_release(&file_lock);
-  
-  free(mf_des);
-
   return;
 }

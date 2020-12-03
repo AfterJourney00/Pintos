@@ -523,11 +523,6 @@ init_thread (struct thread *t, const char *name, int priority)
   list_init(&(t->children_exit_code_list));
 #endif
 
-#ifdef VM
-  t->sp = NULL;                       /* Initialize the stack pointer as NULL*/
-  list_init(&t->mmap_file_list);      /* Initialize the memory-mapped file */
-#endif
-
   old_level = intr_disable ();
   list_push_back (&all_list, &t->allelem);
   intr_set_level (old_level);
