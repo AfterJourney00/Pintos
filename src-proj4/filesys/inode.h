@@ -20,4 +20,11 @@ void inode_deny_write (struct inode *);
 void inode_allow_write (struct inode *);
 off_t inode_length (const struct inode *);
 
+/* Indexed and extensible file inodes allocation */
+bool freemap_single_sector_create(block_sector_t* sec);
+bool direct_inode_create(struct inode_disk *disk_inode, size_t* sectors, off_t ofs);
+bool indirect_inode_create1(struct inode_disk *disk_inode, size_t* sectors, off_t ofs);
+bool indirect_inode_create2(struct inode_disk *disk_inode, size_t* sectors, off_t ofs);
+bool indexed_inode_allocate(struct inode_disk *disk_inode, size_t* sectors);
+
 #endif /* filesys/inode.h */

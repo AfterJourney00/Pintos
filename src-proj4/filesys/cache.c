@@ -46,10 +46,9 @@ check_hit_or_not(block_sector_t sec)
 
   struct cache_line* target_line = NULL;
   for(int i = 0; i < CACHE_SIZE; i ++){
-    if(cache[i].valid_bit && sec == cache[i].sector_idx){
+    if(cache[i].valid_bit && sec == cache[i].sector_idx && !cache[i].available){
       target_line = &cache[i];                  /* Find the candidate line */
       cache[i].accessed_time = timer_ticks();   /* Update its accessed time */
-      ASSERT(cache[i].available == false);      /* Assert this cache line is busy now */
       goto done;
     }
   }
@@ -80,8 +79,11 @@ cache_line_clear(struct cache_line* cl)
 {
   ASSERT(lock_held_by_current_thread(&cache_lock));
 
-  cl->valid_bit = false;            /* Set this cache line as an invalid one */
-  cl->dirty_bit = false;
+  if(cl->dirty_bit){
+    cache_write_back(cl);
+  }
+  cl->valid_bit = false;
+  return;
 }
 
 /* Find a free cache line if cache miss */
