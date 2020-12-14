@@ -203,6 +203,14 @@ syscall_handler (struct intr_frame *f)
       break;
     }
 
+    case SYS_TELL:
+    {
+      int fd = *((int*)(f->esp) + 1);
+
+      f->eax = tell(fd);
+      break;
+    }
+
     case SYS_CLOSE:
     {
       /* parse the arguments first */
@@ -341,7 +349,7 @@ filesize(int fd)
     return -1;                                  /* return -1 */
   }
   else{
-    return f->size;
+    return file_length(f->file_ptr);
   }
 }
 

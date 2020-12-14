@@ -282,13 +282,11 @@ static void
 run_task (char **argv)
 {
   const char *task = argv[1];
-  printf("task: %s\n", task);
   
   printf ("Executing '%s':\n", task);
 #ifdef USERPROG
   process_wait (process_execute (task));
 #else
-  printf("chulaile\n");
   run_test (task);
 #endif
   printf ("Execution of '%s' complete.\n", task);

@@ -99,7 +99,7 @@ process_execute (const char *file_name)
       return tid;
     }
   }
-
+  
   /* The chile thread is not exited yet, so check load successfully or not */
   if(t->isloaded != 1){
     return -1;
@@ -426,7 +426,7 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
   if (t->pagedir == NULL) 
     goto done;
   process_activate ();
-
+  
   /* Open executable file. */
   file = filesys_open (file_name[0]);
   if (file == NULL) 
@@ -441,7 +441,7 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
 
   /* Deny writes to executable */
   file_deny_write (file);
-
+  
   /* Read and verify executable header. */
   if (file_read (file, &ehdr, sizeof ehdr) != sizeof ehdr
       || memcmp (ehdr.e_ident, "\177ELF\1\1\1", 7)
@@ -451,7 +451,6 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
       || ehdr.e_phentsize != sizeof (struct Elf32_Phdr)
       || ehdr.e_phnum > 1024) 
     {
-      printf ("load: %s: error loading executable\n", file_name);
       goto done; 
     }
 
@@ -517,7 +516,7 @@ load (char **file_name, void (**eip) (void), void **esp, int argc)
   /* Set up stack. */
   if (!setup_stack (esp, file_name, argc))
     goto done;
-
+  
   /* Start address. */
   *eip = (void (*) (void)) ehdr.e_entry;
 
