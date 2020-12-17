@@ -119,6 +119,10 @@ struct thread
     struct list children_exit_code_list;/* A list used to record children threads' exit code*/
 #endif
 
+#ifdef FILESYS
+   struct dir* cwd;                    /* Record the current working directory */
+#endif
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };

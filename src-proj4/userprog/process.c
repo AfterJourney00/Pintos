@@ -149,6 +149,13 @@ start_process (void *file_name_)
   }
 
   if(cur->parent_t != NULL){
+    if(cur->parent_t->cwd != NULL){
+      cur->cwd = dir_reopen(cur->parent_t->cwd);
+    }
+    else{
+      cur->cwd = dir_open_root();
+    }
+
     /* Synchronization: loading finished, broadcast the condition variable */
     lock_acquire(&(cur->parent_t->loading_lock));
     cond_broadcast(&(cur->parent_t->loading_cond), &(cur->parent_t->loading_lock));
@@ -319,6 +326,9 @@ process_exit (void)
   
   /* Clear all files opened by current thread */
   clear_files(cur);
+
+  /* Close the current working directory of the process */
+  dir_close(cur->cwd);
 }
 
 /* Sets up the CPU for running user code in the current

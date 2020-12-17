@@ -5,6 +5,7 @@
 #include "filesys/filesys.h"
 #include "filesys/inode.h"
 #include "threads/malloc.h"
+#include "threads/thread.h"
 
 /* A directory. */
 struct dir 
@@ -26,7 +27,22 @@ struct dir_entry
 bool
 dir_create (block_sector_t sector, size_t entry_cnt)
 {
-  return inode_create (sector, entry_cnt * sizeof (struct dir_entry));
+  bool success = inode_create (sector, entry_cnt * sizeof (struct dir_entry), true);
+  if(!success){
+    return success;
+  }
+  struct dir_entry e;
+  size_t entry_size = sizeof(struct dir_entry);
+  struct inode* cur_inode = inode_open(sector);
+  ASSERT(cur_inode != NULL);
+
+  struct dir* cur_dir = dir_open(cur_inode);
+  ASSERT(cur_dir != NULL);
+
+  e.inode_sector = sector;
+  off_t written_bytes = inode_write_at(cur_dir->inode, &e, entry_size, 0);
+  dir_close(cur_dir);
+  return written_bytes == entry_size;
 }
 
 /* Opens and returns the directory for the given INODE, of which
@@ -38,7 +54,7 @@ dir_open (struct inode *inode)
   if (inode != NULL && dir != NULL)
     {
       dir->inode = inode;
-      dir->pos = 0;
+      dir->pos = sizeof(struct dir_entry);
       return dir;
     }
   else
@@ -55,6 +71,57 @@ struct dir *
 dir_open_root (void)
 {
   return dir_open (inode_open (ROOT_DIR_SECTOR));
+}
+
+/* A general function for directory opening: 
+   Take a full path as input and open the directory layer by layer
+*/
+struct dir *
+dir_general_open(const char* full_path)
+{
+  ASSERT(full_path != NULL);
+
+  struct thread* cur = thread_current();
+  size_t path_length = strlen(full_path) + 1;
+  char* full_path_copy = (char*)malloc(path_length);
+  memcpy(full_path_copy, full_path, path_length);
+
+  struct dir* parent;
+  if(full_path_copy[0] == '/' || cur->cwd == NULL){
+    parent = dir_open_root();
+  }
+  else{
+    parent = dir_reopen(cur->cwd);
+  }
+  
+  char* save_ptr;
+  for(char* s = strtok_r(full_path_copy, "/", &save_ptr);
+            s != NULL;
+            s = strtok_r(NULL, "/", &save_ptr)){
+    struct inode* sub;
+    if(!dir_lookup(parent, s, &sub)){     /* No sub dir in parent dir */
+      dir_close(parent);
+      goto done;
+    }
+
+    struct dir* sub_dir = dir_open(sub);
+    if(sub_dir == NULL){/* Sub dir open failed */
+      dir_close(parent);
+      goto done;
+    }
+
+    dir_close(parent);
+    if(inode_is_removed(sub)){
+      goto done;
+    }
+    parent = sub_dir;
+  }
+  free(full_path_copy);
+  return parent;
+
+done:
+  free(full_path_copy);
+  return NULL;
 }
 
 /* Opens and returns a new directory for the same inode as DIR.
@@ -98,7 +165,7 @@ lookup (const struct dir *dir, const char *name,
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
 
-  for (ofs = 0; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
+  for (ofs = sizeof e; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
        ofs += sizeof e) 
     if (e.in_use && !strcmp (name, e.name)) 
       {
@@ -120,11 +187,21 @@ dir_lookup (const struct dir *dir, const char *name,
             struct inode **inode) 
 {
   struct dir_entry e;
+  size_t entry_size = sizeof(struct dir_entry);
 
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
-
-  if (lookup (dir, name, &e, NULL))
+  
+  if(name == '.'){        /* We are looking up current directory */
+    *inode = inode_reopen(dir->inode);
+  }
+  else if(name == ".."){  /* We are looking up the parent directory */
+    if(inode_read_at(dir->inode, &e, entry_size, 0) != entry_size){
+      return NULL;
+    }
+    *inode = inode_open(e.inode_sector);
+  }
+  else if (lookup (dir, name, &e, NULL))
     *inode = inode_open (e.inode_sector);
   else
     *inode = NULL;
@@ -139,9 +216,10 @@ dir_lookup (const struct dir *dir, const char *name,
    Fails if NAME is invalid (i.e. too long) or a disk or memory
    error occurs. */
 bool
-dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
+dir_add (struct dir *dir, const char *name, block_sector_t inode_sector, bool is_dir)
 {
   struct dir_entry e;
+  size_t entry_size = sizeof(struct dir_entry);
   off_t ofs;
   bool success = false;
 
@@ -155,6 +233,21 @@ dir_add (struct dir *dir, const char *name, block_sector_t inode_sector)
   /* Check that NAME is not in use. */
   if (lookup (dir, name, NULL, NULL))
     goto done;
+
+  /* Record the parent directory(dir) in the subdir inode[first dir_entry] */
+  if(is_dir){
+    struct inode* subdir_inode = inode_open(inode_sector);
+    if(subdir_inode == NULL){
+      return false;
+    }
+
+    struct dir* subdir = dir_open(subdir_inode);
+    if(subdir == NULL){
+      return false;
+    }
+    inode_read_at(dir->inode, &e, entry_size, 0);
+    inode_write_at(subdir->inode, &e, entry_size, 0);
+  }
 
   /* Set OFS to offset of free slot.
      If there are no free slots, then it will be set to the
@@ -201,15 +294,33 @@ dir_remove (struct dir *dir, const char *name)
   if (inode == NULL)
     goto done;
 
+  /* 
+    Check if the file we want to remove is a directory.
+    If so, return false if this directory is not empty.
+  */
+  if(inode_is_dir(inode)){
+    struct dir* subdir = dir_open(inode);
+    struct dir_entry de;
+    size_t entry_size = sizeof(struct dir_entry);
+    for(off_t offset = entry_size;
+        inode_read_at(subdir->inode, &de, entry_size, offset) == entry_size;
+        offset += entry_size){
+      if(de.in_use){
+        dir_close(subdir);
+        goto done;
+      }
+    }
+  }
+
   /* Erase directory entry. */
   e.in_use = false;
   if (inode_write_at (dir->inode, &e, sizeof e, ofs) != sizeof e) 
     goto done;
-
+  
   /* Remove inode. */
   inode_remove (inode);
   success = true;
-
+  
  done:
   inode_close (inode);
   return success;
@@ -233,4 +344,31 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
         } 
     }
   return false;
+}
+
+void
+split_path_to_dir_filename(const char* full_path, char* dir, char* filename)
+{
+  ASSERT(full_path != NULL && dir != NULL && filename != NULL);
+
+  /* Create a backup of the full path */
+  size_t path_length = strlen(full_path) + 1;
+  char* full_path_copy = (char*)malloc(path_length);
+  memcpy(full_path_copy, full_path, path_length);
+
+  /* Coordinate the location of filename(last token) */
+  size_t i = path_length - 2;
+  for(i = path_length - 2; (int)i >= 0; i --){
+    if(full_path_copy[i] == '/'){
+      break;
+    }
+  }
+  
+  /* Split the directory and file name */
+  memcpy(filename, full_path_copy + i+1, path_length - i-1);
+  full_path_copy[i+1] = '\0';
+  memcpy(dir, full_path_copy, i + 2);
+
+  free(full_path_copy);
+  return;
 }

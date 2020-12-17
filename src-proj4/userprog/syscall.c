@@ -9,6 +9,7 @@
 #include <list.h>
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "filesys/directory.h"
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include "devices/input.h"
@@ -219,6 +220,52 @@ syscall_handler (struct intr_frame *f)
       close(fd);
       break;
     }
+
+    case SYS_CHDIR:
+    {
+      /* parse the arguments first */
+      const char *dir = (const char*)*((int*)(f->esp) + 1);
+
+      f->eax = chdir(dir);
+      break;
+    }
+
+    case SYS_MKDIR:
+    {
+      /* parse the arguments first */
+      const char *dir = (const char*)*((int*)(f->esp) + 1);
+
+      f->eax = mkdir(dir);
+      break;
+    }
+
+    case SYS_READDIR:
+    {
+      /* parse the arguments first */
+      int fd = *((int*)(f->esp) + 1);
+      char* name = (char*)*((int*)(f->esp) + 2);
+
+      f->eax = readdir(fd, name);
+      break;
+    }
+
+    case SYS_ISDIR:
+    {
+      /* parse the arguments first */
+      int fd = *((int*)(f->esp) + 1);
+
+      f->eax = isdir(fd);
+      break;
+    }
+
+    case SYS_INUMBER:
+    {
+      /* parse the arguments first */
+      int fd = *((int*)(f->esp) + 1);
+
+      f->eax = inumber(fd);
+      break;
+    }
   }
 }
 
@@ -282,7 +329,7 @@ create(const char* file, unsigned initial_size)
 
   /* Synchronization: only current thread access pointer file */
   lock_acquire(&file_lock);
-  int success = filesys_create(file, initial_size);
+  int success = filesys_create(file, initial_size, false);
   lock_release(&file_lock);
 
   return success;
@@ -318,13 +365,16 @@ open(const char* file)
 
   /* Synchronization: only current thread access pointer file */
   lock_acquire(&file_lock);
-
   struct file *file_opened = filesys_open(file); 
   struct file_des* des;
 
   if(file_opened != NULL){
+    struct inode* inode = file_get_inode(file_opened);
+    ASSERT(inode != NULL);
+
     des = (struct file_des*)malloc(sizeof(struct file_des));
     des->file_ptr = file_opened;
+    des->is_dir = inode_is_dir(inode);           /* Record the is_dir attribute */
     des->fd = ++global_fd;                       /* Set the fd */
     des->size = file_length(file_opened);        /* Set the size of file */
     des->opener = thread_current();              /* Set the opener thread */
@@ -416,7 +466,7 @@ write(int fd, const void *buffer, unsigned size)
   }
   else{
     struct file_des *f = find_des_by_fd(fd);    /* Find the target file descriptor */
-    if(f == NULL){                              /* If no target file descriptor */
+    if(f == NULL || f->is_dir){                 /* If no target file descriptor or dir des */
       res = -1;                                 /* return -1 */
     }
     else{
@@ -497,4 +547,96 @@ close(int fd)
 done:
   lock_release(&file_lock);
   return;
+}
+
+/* syscall: change working directory of current process */
+int
+chdir(const char *dir)
+{
+  if(bad_ptr(dir)){
+    exit(-1);
+  }
+
+  int success;
+  lock_acquire(&file_lock);
+  success = filesys_change_dir(dir);
+  lock_release(&file_lock);
+  return success;
+}
+
+/* syscall: create a directory in current process */
+int
+mkdir(const char *dir)
+{
+  if(bad_ptr(dir)){
+    exit(-1);
+  }
+
+  int success;
+  lock_acquire(&file_lock);
+  success = filesys_create(dir, 0, true);
+  lock_release(&file_lock);
+  return success;
+}
+
+/* syscall: read a directory entry */
+int
+readdir(int fd, char *name)
+{
+  if(bad_ptr(name)){
+    exit(-1);
+  }
+
+  bool success = false;
+  lock_acquire(&file_lock);
+  struct file_des* f = find_des_by_fd(fd);
+  if(f == NULL){
+    goto done;
+  }
+  if(!f->is_dir){
+    goto done;
+  }
+
+  struct inode* inode = file_get_inode(f->file_ptr);
+  if(inode == NULL){
+    goto done;
+  }
+  struct dir* dir = dir_open(inode);
+  if(dir == NULL){
+    goto done;
+  }
+  success = dir_readdir(dir, name);
+
+done:
+  lock_release(&file_lock);
+  return success;
+}
+
+/* syscall: return whether the file descriptor is a directory */
+int
+isdir(int fd)
+{
+  lock_acquire(&file_lock);
+  struct file_des* f = find_des_by_fd(fd);
+  lock_release(&file_lock);
+
+  if(f == NULL){
+    exit(-1);
+  }
+  return f->is_dir;
+}
+
+/* syscall: return whether the file descriptor is a directory */
+int
+inumber(int fd)
+{
+  lock_acquire(&file_lock);
+  struct file_des* f = find_des_by_fd(fd);
+  ASSERT(f != NULL);
+
+  struct inode *inode = file_get_inode(f->file_ptr);
+  ASSERT(inode != NULL);
+  lock_release(&file_lock);
+
+  return inode_get_inumber(inode);
 }

@@ -9,6 +9,7 @@ struct file_des
 {
   int fd;                             /* File descriptor number */
   int size;                           /* Size of this file */
+  int is_dir;                         /* Record this fd is for a ordinary file or a directory */
   struct file *file_ptr;              /* The pointer of this file */
   struct thread* opener;              /* The thread open this file */
   struct list_elem filelem;           /* Element for list */
@@ -29,6 +30,11 @@ int write(int fd, const void *buffer, unsigned size);
 void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
+int chdir(const char *dir);
+int mkdir(const char *dir);
+int readdir(int fd, char *name);
+int isdir(int fd);
+int inumber(int fd);
 
 /* Helper functions */
 int bad_ptr(const char* file);

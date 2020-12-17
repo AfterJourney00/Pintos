@@ -11,7 +11,7 @@
 #define INODE_MAGIC 0x494e4f44
 
 /* Multi level sectors */
-#define FIRST_LAYER_SECTORS 124
+#define FIRST_LAYER_SECTORS 123
 #define SECTORS_PER_SECTOR 128
 #define SECOND_LAYER_SECTORS SECTORS_PER_SECTOR
 
@@ -22,10 +22,10 @@ struct inode_disk
     block_sector_t direct_sectors[FIRST_LAYER_SECTORS];
     block_sector_t indirect_sector_idx;
     block_sector_t doubly_indirect_sector_idx;
-    // block_sector_t start;               /* First data sector. */
+
+    bool is_dir;                        /* Record this file is a directory or not */
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
-    // uint32_t unused[125];               /* Not used. */
   };
 
 /* Definition of Indexed and extensible file inodes allocation functions */
@@ -39,7 +39,7 @@ bool indexed_inode_allocate(struct inode_disk *disk_inode, size_t sectors);
 bool direct_inode_dealloc(struct inode_disk *disk_inode, size_t* sectors);
 bool indirect_inode_dealloc1(struct inode_disk *disk_inode, size_t* sectors);
 bool indirect_inode_dealloc2(struct inode_disk *disk_inode, size_t* sectors);
-bool indexed_inode_dealloc(struct inode_disk *disk_inode, size_t* sectors);
+bool indexed_inode_dealloc(struct inode_disk *disk_inode, size_t sectors);
 
 /* Helper function */
 void zero_array_init(block_sector_t* array);
@@ -124,7 +124,7 @@ inode_init (void)
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
 bool
-inode_create (block_sector_t sector, off_t length)
+inode_create (block_sector_t sector, off_t length, bool is_dir)
 {
   struct inode_disk *disk_inode = NULL;
   bool success = false;
@@ -140,6 +140,7 @@ inode_create (block_sector_t sector, off_t length)
     {
       size_t sectors = bytes_to_sectors (length);
       disk_inode->length = length;
+      disk_inode->is_dir = is_dir;
       disk_inode->magic = INODE_MAGIC;
       if(indexed_inode_allocate(disk_inode, sectors)){
         cache_do(false, sector, disk_inode);
@@ -295,7 +296,6 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       bytes_read += chunk_size;
     }
   free (bounce);
-
   return bytes_read;
 }
 
@@ -645,10 +645,8 @@ bool
 direct_inode_dealloc(struct inode_disk *disk_inode, size_t* sectors)
 {
   ASSERT(disk_inode != NULL);
-  ASSERT(*sectors > 0);
 
   for(int i = 0; i < FIRST_LAYER_SECTORS && *sectors > 0; i ++){
-    ASSERT(disk_inode->direct_sectors[i] != 0);
     free_map_release(disk_inode->direct_sectors[i], 1);
     *sectors -= 1;
   }
@@ -661,14 +659,12 @@ bool
 indirect_inode_dealloc1(struct inode_disk *disk_inode, size_t* sectors)
 {
   ASSERT(disk_inode != NULL);
-  ASSERT(disk_inode->indirect_sector_idx != 0);
   ASSERT(*sectors > 0);
 
   block_sector_t indirect_sectors_array[SECOND_LAYER_SECTORS];
   cache_do(true, disk_inode->indirect_sector_idx, indirect_sectors_array);
 
   for(int i = 0; i < SECOND_LAYER_SECTORS && *sectors > 0; i++){
-    ASSERT(indirect_sectors_array[i] != 0);
     free_map_release(indirect_sectors_array[i], 1);
     *sectors -= 1;
   }
@@ -681,7 +677,6 @@ bool
 indirect_inode_dealloc2(struct inode_disk *disk_inode, size_t* sectors)
 {
   ASSERT(disk_inode != NULL);
-  ASSERT(disk_inode->doubly_indirect_sector_idx != 0);
   ASSERT(*sectors > 0);
 
   block_sector_t indirect_sectors_array1[SECOND_LAYER_SECTORS];
@@ -689,10 +684,8 @@ indirect_inode_dealloc2(struct inode_disk *disk_inode, size_t* sectors)
   cache_do(true, disk_inode->doubly_indirect_sector_idx, indirect_sectors_array1);
 
   for(int i = 0; i < SECOND_LAYER_SECTORS && *sectors > 0; i++){
-    ASSERT(indirect_sectors_array1[i] != 0);
     cache_do(true, indirect_sectors_array1[i], indirect_sectors_array2);
     for(int j = 0; j < SECOND_LAYER_SECTORS && *sectors > 0; j++){
-      ASSERT(indirect_sectors_array2[j] != 0);
       free_map_release(indirect_sectors_array2[j], 1);
       *sectors -= 1;
     }
@@ -704,16 +697,15 @@ indirect_inode_dealloc2(struct inode_disk *disk_inode, size_t* sectors)
 
 /* Function for deallocate indexed and extensible file inodes */
 bool
-indexed_inode_dealloc(struct inode_disk *disk_inode, size_t* sectors)
+indexed_inode_dealloc(struct inode_disk *disk_inode, size_t sectors)
 {
-  ASSERT(disk_inode != NULL && sectors != NULL);
-  ASSERT(*sectors > 0);
+  ASSERT(disk_inode != NULL);
 
   bool success = false;
 
   /* Pre check whether indirect sectors are needed */
-  bool is_indirect_needed = sectors > FIRST_LAYER_SECTORS;
-  bool is_doubly_indirect_needed = sectors - FIRST_LAYER_SECTORS > SECOND_LAYER_SECTORS;
+  bool is_indirect_needed = (int)sectors > (int)FIRST_LAYER_SECTORS;
+  bool is_doubly_indirect_needed = (int)(sectors - FIRST_LAYER_SECTORS) > (int)SECOND_LAYER_SECTORS;
 
   /* Deallocate direct sectors */
   direct_inode_dealloc(disk_inode, &sectors);
@@ -733,4 +725,18 @@ indexed_inode_dealloc(struct inode_disk *disk_inode, size_t* sectors)
 
 done:
   return success;
+}
+
+bool
+inode_is_removed(struct inode * node)
+{
+  ASSERT(node != NULL);
+  return node->removed;
+}
+
+bool
+inode_is_dir(struct inode * node)
+{
+  ASSERT(node != NULL);
+  return node->data.is_dir;
 }
