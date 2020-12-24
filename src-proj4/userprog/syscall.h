@@ -1,6 +1,7 @@
 #ifndef USERPROG_SYSCALL_H
 #define USERPROG_SYSCALL_H
 #include "threads/thread.h"
+#include "filesys/directory.h"
 
 typedef int pid_t;
 
@@ -10,10 +11,13 @@ struct file_des
   int fd;                             /* File descriptor number */
   int size;                           /* Size of this file */
   int is_dir;                         /* Record this fd is for a ordinary file or a directory */
+  struct dir* dir;                    /* Pointer of the directory */
   struct file *file_ptr;              /* The pointer of this file */
   struct thread* opener;              /* The thread open this file */
   struct list_elem filelem;           /* Element for list */
 };
+
+struct lock file_lock;                /* Lock for file operations */
 
 void syscall_init (void);
 

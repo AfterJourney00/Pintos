@@ -9,7 +9,6 @@
 #include <list.h>
 #include "filesys/file.h"
 #include "filesys/filesys.h"
-#include "filesys/directory.h"
 #include "threads/palloc.h"
 #include "threads/malloc.h"
 #include "devices/input.h"
@@ -17,7 +16,6 @@
 
 typedef int pid_t;
 
-struct lock file_lock;          /* Lock for file operations */
 static int global_fd = 1;       /* fd generator */
 struct list file_list;          /* List for storing all opened files */
 
@@ -375,6 +373,12 @@ open(const char* file)
     des = (struct file_des*)malloc(sizeof(struct file_des));
     des->file_ptr = file_opened;
     des->is_dir = inode_is_dir(inode);           /* Record the is_dir attribute */
+    if(des->is_dir){
+      des->dir = dir_open(inode);
+    }
+    else{
+      des->dir = NULL;
+    }
     des->fd = ++global_fd;                       /* Set the fd */
     des->size = file_length(file_opened);        /* Set the size of file */
     des->opener = thread_current();              /* Set the opener thread */
@@ -470,7 +474,9 @@ write(int fd, const void *buffer, unsigned size)
       res = -1;                                 /* return -1 */
     }
     else{
+      // printf("before file_write\n");
       res = file_write(f->file_ptr, buffer, size);
+      // printf("finish file write\n");
     }
   }
 
@@ -598,13 +604,17 @@ readdir(int fd, char *name)
   }
 
   struct inode* inode = file_get_inode(f->file_ptr);
+
   if(inode == NULL){
     goto done;
   }
-  struct dir* dir = dir_open(inode);
+  ASSERT(inode_is_dir(inode));
+
+  struct dir* dir = f->dir;
   if(dir == NULL){
     goto done;
   }
+
   success = dir_readdir(dir, name);
 
 done:

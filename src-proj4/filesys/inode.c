@@ -72,7 +72,7 @@ static block_sector_t
 byte_to_sector (const struct inode *inode, off_t pos) 
 {
   ASSERT(inode != NULL);
-
+  // printf("pos = %d\n", pos);
   if(pos < 0 || pos >= inode->data.length){
     return -1;
   }
@@ -82,7 +82,7 @@ byte_to_sector (const struct inode *inode, off_t pos)
   zero_array_init(indirect_sectors_array1);
   zero_array_init(indirect_sectors_array2);
   off_t idx = pos / BLOCK_SECTOR_SIZE;
-
+  // printf("idx: %d\n", idx);
   if(idx < FIRST_LAYER_SECTORS){           /* Direct sectors can cover */
     return inode->data.direct_sectors[idx];
   }
@@ -96,12 +96,12 @@ byte_to_sector (const struct inode *inode, off_t pos)
     else{                                           /* Doubly indirect sectors can cover */
       idx -= SECOND_LAYER_SECTORS;
       ASSERT(idx < SECTORS_PER_SECTOR * SECTORS_PER_SECTOR);
-
+      // printf("idx = %d\n", idx);
       size_t double_indirect_idx1 = idx / SECTORS_PER_SECTOR;
       size_t double_indirect_idx2 = idx % SECTORS_PER_SECTOR;
       cache_do(true, inode->data.doubly_indirect_sector_idx, indirect_sectors_array1);
       cache_do(true, indirect_sectors_array1[double_indirect_idx1], indirect_sectors_array2);
-      return indirect_sectors_array1[double_indirect_idx2];
+      return indirect_sectors_array2[double_indirect_idx2];
     }
   }
   return -1;     /* Error case */
@@ -249,6 +249,8 @@ inode_remove (struct inode *inode)
 off_t
 inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset) 
 {
+  ASSERT(inode != NULL && buffer_ != NULL);
+
   uint8_t *buffer = buffer_;
   off_t bytes_read = 0;
   uint8_t *bounce = NULL;
@@ -341,7 +343,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
         ASSERT(occupied_sectors < SECTORS_PER_SECTOR * SECTORS_PER_SECTOR);
       }
     }
-
     /* Do extension, return 0 if any failure occurs */
     if(start_layer == 0){
       if(!direct_inode_create(&inode->data, &lack_sectors, occupied_sectors)){
@@ -552,6 +553,7 @@ done:
 bool
 indirect_inode_create2(struct inode_disk *disk_inode, size_t* sectors, off_t ofs)
 {
+  // printf("sectors: %d\n", *sectors);
   block_sector_t indirect_sectors_array1[SECTORS_PER_SECTOR];
   block_sector_t indirect_sectors_array2[SECTORS_PER_SECTOR];
   zero_array_init(indirect_sectors_array1);
@@ -560,12 +562,16 @@ indirect_inode_create2(struct inode_disk *disk_inode, size_t* sectors, off_t ofs
   
   /* Check the doubly indirect sector array is allocated or not */
   if(disk_inode->doubly_indirect_sector_idx != 0){
+    // printf("case1\n");
     /* If allocated already, read it from cache */
     cache_do(true, disk_inode->doubly_indirect_sector_idx, indirect_sectors_array1);
+    // printf("finish case1\n");
   }
   else{
+    // printf("case2\n");
     /* If not allocated yet, allocate one using freemap */
     if(!freemap_single_sector_create(&disk_inode->doubly_indirect_sector_idx)){
+      // printf("case3\n");
       goto done;
     }
   }
@@ -576,14 +582,19 @@ indirect_inode_create2(struct inode_disk *disk_inode, size_t* sectors, off_t ofs
   int offset1 = ofs / SECTORS_PER_SECTOR;
   int offset2 = ofs % SECTORS_PER_SECTOR;
   for(int i = offset1; i < SECOND_LAYER_SECTORS && *sectors > 0; i++){
+    // printf("\n");
+    // printf("for loop\n");
     /* If allocate at this level already, read it from cache */
     if(indirect_sectors_array1[i] == 0){
+      // printf("11\n");
       if(!freemap_single_sector_create(&indirect_sectors_array1[i])){
         goto done;
       }
     }
     else{
+      // printf("22\n");
       cache_do(true, indirect_sectors_array1[i], indirect_sectors_array2);
+      // printf("finish 22\n");
     }
     
     for(int j = offset2; j < SECOND_LAYER_SECTORS && *sectors > 0; j++){
@@ -595,7 +606,9 @@ indirect_inode_create2(struct inode_disk *disk_inode, size_t* sectors, off_t ofs
     cache_do(false, indirect_sectors_array1[i], indirect_sectors_array2);
     offset2 = 0;
   }
+  // printf("close to finish\n");
   cache_do(false, disk_inode->doubly_indirect_sector_idx, indirect_sectors_array1);
+  // printf("final cache do finish\n");
   success = true;
 
 done:

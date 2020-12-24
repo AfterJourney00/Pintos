@@ -16,7 +16,6 @@ main (int argc, char *argv[])
 {
   if (argc < 3)
     usage ();
-
   return (make_tar_archive (argv[1], argv + 2, argc - 2)
           ? EXIT_SUCCESS : EXIT_FAILURE);
 }
@@ -90,18 +89,22 @@ archive_file (char file_name[], size_t file_name_size,
               int archive_fd, bool *write_error) 
 {
   int file_fd = open (file_name);
+  // printf("file_fd: %d\n", file_fd);
   if (file_fd >= 0) 
     {
       bool success;
 
       if (inumber (file_fd) != inumber (archive_fd)) 
         {
-          if (!isdir (file_fd))
+          if (!isdir (file_fd)){
             success = archive_ordinary_file (file_name, file_fd,
                                              archive_fd, write_error);
-          else
+            // printf("success: %d\n", success);
+          }
+          else{
             success = archive_directory (file_name, file_name_size, file_fd,
-                                         archive_fd, write_error);      
+                                         archive_fd, write_error);
+          }  
         }
       else
         {
@@ -110,7 +113,6 @@ archive_file (char file_name[], size_t file_name_size,
         }
   
       close (file_fd);
-
       return success;
     }
   else
@@ -152,7 +154,6 @@ archive_ordinary_file (const char *file_name, int file_fd,
 
       file_size -= chunk_size;
     }
-
   return success;
 }
 
@@ -172,11 +173,13 @@ archive_directory (char file_name[], size_t file_name_size, int file_fd,
 
   if (!write_header (file_name, USTAR_DIRECTORY, 0, archive_fd, write_error))
     return false;
-      
+
   file_name[dir_len] = '/';
-  while (readdir (file_fd, &file_name[dir_len + 1])) 
+  while (readdir (file_fd, &file_name[dir_len + 1])){
+    // printf("loop ya loop\n");
     if (!archive_file (file_name, file_name_size, archive_fd, write_error))
       success = false;
+  }
   file_name[dir_len] = '\0';
 
   return success;
@@ -194,13 +197,13 @@ write_header (const char *file_name, enum ustar_type type, int size,
 static bool
 do_write (int fd, const char *buffer, int size, bool *write_error) 
 {
-  if (write (fd, buffer, size) == size) 
+  if (write (fd, buffer, size) == size){
     return true;
+  }
   else
     {
       if (!*write_error) 
         {
-          printf ("error writing archive\n");
           *write_error = true; 
         }
       return false; 

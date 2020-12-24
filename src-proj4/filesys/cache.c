@@ -27,9 +27,11 @@ cache_init(void)
 void
 cache_clear(void)
 {
+  // printf("cache_clear\n");
   /* Clear all 64 cache lines */
   lock_acquire(&cache_lock);
   for(int i = 0; i < CACHE_SIZE; i ++){
+    // printf("cache line %d\n", i);
     cache_line_clear(&cache[i]);
   }
   lock_release(&cache_lock);
@@ -83,6 +85,7 @@ cache_line_clear(struct cache_line* cl)
     cache_write_back(cl);
   }
   cl->valid_bit = false;
+  cl->dirty_bit = false;
   return;
 }
 
@@ -152,8 +155,9 @@ cache_write_back(struct cache_line* cl)
   /* Assert the given cache line is a valid one */
   ASSERT(cl != NULL);
   ASSERT(cl->valid_bit == true && cl->dirty_bit == true);
-
+  
   block_write(fs_device, cl->sector_idx, cl->buffer);
+  cl->dirty_bit = false;
   return;
 }
 

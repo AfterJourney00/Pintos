@@ -93,9 +93,6 @@ filesys_open (const char *name)
   if(strlen(dir_name) == 0 && strlen(file_name) == 0){    /* Empty */
     return NULL;
   }
-  if(file_name == '.'){
-    printf("here\n");
-  }
 
   struct dir *dir;
   dir = dir_general_open(dir_name);
@@ -105,7 +102,7 @@ filesys_open (const char *name)
     return NULL;
   }
   
-  if(strlen(file_name) == 0){
+  if(strlen(file_name) == 0 || strcmp(file_name, ".") == 0){
     inode = dir_get_inode(dir);
   }
   else{
@@ -152,10 +149,12 @@ filesys_remove (const char *name)
 bool
 filesys_change_dir(const char *dir)
 {
+  printf("path? %s\n", dir);
   bool success = false;
   struct thread *cur = thread_current();
   struct dir* newdir = dir_general_open(dir);
   if(newdir == NULL){
+    printf("new dir is NULL?\n");
     goto done;
   }
   dir_close(cur->cwd);
