@@ -15,6 +15,24 @@
 
 #### >> A1: Copy here the declaration of each new or changed `struct` or struct member, global or static variable, `typedef`, or `enumeration`.  Identify the purpose of each in 25 words or less.
 
+- in `inode.c`:
+
+  ```C
+  #define FIRST_LAYER_SECTORS 123
+  #define SECTORS_PER_SECTOR 128
+  #define SECOND_LAYER_SECTORS SECTORS_PER_SECTOR
+  ```
+
+- in `struct inode_disk` in `inode.c`:
+
+  ```C
+  block_sector_t direct_sectors[FIRST_LAYER_SECTORS];
+  block_sector_t indirect_sector_idx;
+  block_sector_t doubly_indirect_sector_idx;
+  ```
+
+  
+
 #### >> A2: What is the maximum size of a file supported by your inode structure?  Show your work.
 
 ### ---- Synchronization
@@ -54,6 +72,13 @@
 ### ---- Data Structures ----
 
 #### >> C1: Copy here the declaration of each new or changed `struct` or struct member, global or static variable, `typedef`, or `enumeration`.  Identify the purpose of each in 25 words or less.
+
+- in `struct cache_line` in `cache.c`:
+
+  ```C
+  bool available;                   /* Indicate whether this cache line is available */
+  char* buffer;                     /* Content of this cache line(512 bytes) */
+  ```
 
 ### ---- Algorithms ----
 
