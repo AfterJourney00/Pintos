@@ -150,14 +150,6 @@ page_fault (struct intr_frame *f)
   user = (f->error_code & PF_U) != 0;
 
   if(bad_ptr(fault_addr)){
-   // printf ("Page fault at %p: %s error %s page in %s context.\n",
-   //        fault_addr,
-   //        not_present ? "not present" : "rights violation",
-   //        write ? "writing" : "reading",
-   //        user ? "user" : "kernel");
-   // printf("sp: %p\n", f->esp);
-
-
    struct thread *cur = thread_current();
    cur->exit_code = -1;
    enum intr_level old_level = intr_disable();

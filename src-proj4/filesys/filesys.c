@@ -67,8 +67,9 @@ filesys_create (const char *name, off_t initial_size, bool is_dir)
                   && free_map_allocate (1, &inode_sector)
                   && inode_create (inode_sector, initial_size, is_dir)
                   && dir_add (dir, file_name, inode_sector, is_dir));
-  if (!success && inode_sector != 0) 
+  if (!success && inode_sector != 0){
     free_map_release (inode_sector, 1);
+  }
   dir_close (dir);
 
   free(dir_name);
@@ -149,12 +150,10 @@ filesys_remove (const char *name)
 bool
 filesys_change_dir(const char *dir)
 {
-  printf("path? %s\n", dir);
   bool success = false;
   struct thread *cur = thread_current();
   struct dir* newdir = dir_general_open(dir);
   if(newdir == NULL){
-    printf("new dir is NULL?\n");
     goto done;
   }
   dir_close(cur->cwd);

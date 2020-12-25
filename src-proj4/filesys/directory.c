@@ -91,16 +91,18 @@ dir_general_open(const char* full_path)
     parent = dir_open_root();
   }
   else{
+    if(inode_is_removed(dir_get_inode(cur->cwd))){
+      goto done;
+    }
     parent = dir_reopen(cur->cwd);
   }
-  printf("marching here\n");
+
   char* save_ptr;
   for(char* s = strtok_r(full_path_copy, "/", &save_ptr);
             s != NULL;
             s = strtok_r(NULL, "/", &save_ptr)){
     struct inode* sub;
     if(!dir_lookup(parent, s, &sub)){     /* No sub dir in parent dir */
-      printf("is here?\n");
       dir_close(parent);
       goto done;
     }
@@ -167,7 +169,7 @@ lookup (const struct dir *dir, const char *name,
   ASSERT (name != NULL);
 
   for (ofs = sizeof e; inode_read_at (dir->inode, &e, sizeof e, ofs) == sizeof e;
-       ofs += sizeof e) 
+       ofs += sizeof e){
     if (e.in_use && !strcmp (name, e.name)) 
       {
         if (ep != NULL)
@@ -176,6 +178,7 @@ lookup (const struct dir *dir, const char *name,
           *ofsp = ofs;
         return true;
       }
+  }
   return false;
 }
 
@@ -192,25 +195,20 @@ dir_lookup (const struct dir *dir, const char *name,
 
   ASSERT (dir != NULL);
   ASSERT (name != NULL);
-  
+
   if(strcmp(name, ".") == 0){        /* We are looking up current directory */
-    printf("case1\n");
     *inode = inode_reopen(dir->inode);
   }
   else if(strcmp(name, "..") == 0){  /* We are looking up the parent directory */
-    printf("case2\n");
     if(inode_read_at(dir->inode, &e, entry_size, 0) != entry_size){
       return NULL;
     }
     *inode = inode_open(e.inode_sector);
   }
   else if (lookup (dir, name, &e, NULL)){
-    printf("case3\n");
     *inode = inode_open (e.inode_sector);
   }
   else{
-    printf("name: %s\n", name);
-    printf("case4\n");
     *inode = NULL;
   }
   return *inode != NULL;
@@ -308,6 +306,10 @@ dir_remove (struct dir *dir, const char *name)
   */
   if(inode_is_dir(inode)){
     struct dir* subdir = dir_open(inode);
+    if(subdir == thread_current()->cwd){
+      dir_close(subdir);
+      goto done;
+    }
     struct dir_entry de;
     size_t entry_size = sizeof(struct dir_entry);
     for(off_t offset = entry_size;
@@ -342,18 +344,14 @@ dir_readdir (struct dir *dir, char name[NAME_MAX + 1])
 {
   struct dir_entry e;
 
-  // printf("pos: %d\n", dir->pos);
   while (inode_read_at (dir->inode, &e, sizeof e, dir->pos) == sizeof e) 
     {
-      // printf("begin loop\n");
       dir->pos += sizeof e;
-      // printf("pos: %d\n", dir->pos);
       if (e.in_use)
         {
           strlcpy (name, e.name, NAME_MAX + 1);
           return true;
         }
-      // printf("finish loop\n");
     }
   return false;
 }

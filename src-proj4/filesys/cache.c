@@ -27,11 +27,9 @@ cache_init(void)
 void
 cache_clear(void)
 {
-  // printf("cache_clear\n");
   /* Clear all 64 cache lines */
   lock_acquire(&cache_lock);
   for(int i = 0; i < CACHE_SIZE; i ++){
-    // printf("cache line %d\n", i);
     cache_line_clear(&cache[i]);
   }
   lock_release(&cache_lock);

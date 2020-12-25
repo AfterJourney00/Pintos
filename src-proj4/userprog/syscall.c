@@ -73,7 +73,13 @@ clear_files(struct thread* t)
     struct file_des* fdes = list_entry(iter, struct file_des, filelem);
     if(fdes->opener == t){
       list_remove(iter);
-      file_close(fdes->file_ptr);
+      if(fdes->is_dir){
+        dir_close(fdes->dir);
+        fdes->dir = NULL;
+      }
+      else{
+        file_close(fdes->file_ptr);
+      }
       free(fdes);
     }
     iter = next_iter;
@@ -474,9 +480,7 @@ write(int fd, const void *buffer, unsigned size)
       res = -1;                                 /* return -1 */
     }
     else{
-      // printf("before file_write\n");
       res = file_write(f->file_ptr, buffer, size);
-      // printf("finish file write\n");
     }
   }
 
@@ -543,11 +547,14 @@ close(int fd)
   struct file_des *f = find_des_by_fd(fd);    /* Find the target file descriptor */
 
   /* Check the file is valid or not and check the closer is also the opener or not */
-  if(f == NULL || f->opener != thread_current()){
+  if(f == NULL || f->opener != thread_current() || f->file_ptr == NULL){
     goto done;
   }
   list_remove(&(f->filelem));
   file_close(f->file_ptr);
+  if(f->is_dir){
+    dir_close(f->dir);
+  }
   free(f);
 
 done:
